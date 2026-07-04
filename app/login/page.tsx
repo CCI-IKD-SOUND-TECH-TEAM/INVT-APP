@@ -96,38 +96,36 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen bg-background md:grid-cols-[1.1fr_1fr]">
-      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-line-subtle p-12 md:flex bg-[radial-gradient(120%_90%_at_15%_10%,var(--brand-tint)_0%,transparent_55%)]">
-        <div className="flex items-center gap-2.5">
+      <aside className="relative hidden flex-col overflow-hidden border-r border-line-subtle p-12 md:flex">
+        <Image
+          src="/login-bg.jpg"
+          alt=""
+          fill
+          priority
+          sizes="(min-width: 768px) 55vw, 0px"
+          className="object-cover"
+        />
+        {/* Scrim: even base tint + left-anchored gradient so the text column
+            stays legible while the right of the photo keeps its detail */}
+        <div className="absolute inset-0 bg-black/55" />
+        <div className="absolute inset-0 bg-linear-to-r from-black/85 via-black/60 to-black/25" />
+
+        <div className="relative flex items-center gap-2.5 text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.55)]">
           <BrandMark />
           <span className="font-display text-[1.1rem] tracking-wide">Ikorodu Inventory</span>
         </div>
 
-        <div className="max-w-[30rem]">
+        <div className="relative flex flex-1 flex-col justify-center max-w-[30rem] text-white [text-shadow:0_1px_4px_rgb(0_0_0/0.6)]">
           <h1 className="mb-4 font-display text-[clamp(2.25rem,4vw,3.5rem)] leading-[1.02]">
             Every mic, light,
             <br />
-            and cable — <em className="text-brand not-italic">accounted for.</em>
+            and cable  <em className="text-white not-italic">accounted for.</em>
           </h1>
-          <p className="max-w-[32ch] text-base text-muted-foreground">
+          <p className="max-w-lg text-base leading-relaxed font-medium text-white">
             One shared system for sound, light, and projection assets — track
             status, log defects, and keep a full repair history without the
             spreadsheet guesswork.
           </p>
-        </div>
-
-        <div className="flex gap-8">
-          {[
-            { value: "3", label: "Departments" },
-            { value: "5", label: "Trusted staff" },
-            { value: "100%", label: "Audit trail" },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-col gap-1">
-              <span className="font-display text-2xl leading-none">{stat.value}</span>
-              <span className="text-xs font-bold tracking-wide text-ink-faint uppercase">
-                {stat.label}
-              </span>
-            </div>
-          ))}
         </div>
       </aside>
 
