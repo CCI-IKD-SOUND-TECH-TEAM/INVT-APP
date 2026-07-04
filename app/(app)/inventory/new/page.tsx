@@ -246,7 +246,7 @@ function ItemFormContent() {
   }
 
   return (
-    <div className="flex max-w-[760px] flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
       <Link
         href="/inventory"
         className="inline-flex w-fit items-center gap-1.5 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-foreground"
