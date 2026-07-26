@@ -122,23 +122,31 @@ function TaxonomyManager({
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState("");
   const [addError, setAddError] = useState("");
+  const [savingAdd, setSavingAdd] = useState(false);
 
   const [editingTerm, setEditingTerm] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [editError, setEditError] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function submitAdd(e: React.FormEvent) {
     e.preventDefault();
-    const res = await add(addDraft);
-    if ("error" in res) {
-      setAddError(res.error);
-    } else {
-      onToast(`${noun} "${addDraft.trim()}" added.`);
-      setAddDraft("");
-      setAddError("");
-      setAdding(false);
+    setSavingAdd(true);
+    try {
+      const res = await add(addDraft);
+      if ("error" in res) {
+        setAddError(res.error);
+      } else {
+        onToast(`${noun} "${addDraft.trim()}" added.`);
+        setAddDraft("");
+        setAddError("");
+        setAdding(false);
+      }
+    } finally {
+      setSavingAdd(false);
     }
   }
 
@@ -151,13 +159,18 @@ function TaxonomyManager({
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingTerm) return;
-    const res = await rename(editingTerm, editDraft);
-    if ("error" in res) {
-      setEditError(res.error);
-    } else {
-      if (editDraft.trim() !== editingTerm)
-        onToast(`Renamed to "${editDraft.trim()}".`);
-      setEditingTerm(null);
+    setSavingEdit(true);
+    try {
+      const res = await rename(editingTerm, editDraft);
+      if ("error" in res) {
+        setEditError(res.error);
+      } else {
+        if (editDraft.trim() !== editingTerm)
+          onToast(`Renamed to "${editDraft.trim()}".`);
+        setEditingTerm(null);
+      }
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -203,13 +216,14 @@ function TaxonomyManager({
               }}
               onKeyDown={(e) => e.key === "Escape" && setAdding(false)}
             />
-            <Button type="submit" size="sm">
+            <Button type="submit" size="sm" loading={savingAdd}>
               Save
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
+              disabled={savingAdd}
               onClick={() => setAdding(false)}
             >
               Cancel
@@ -260,7 +274,7 @@ function TaxonomyManager({
                         e.key === "Escape" && setEditingTerm(null)
                       }
                     />
-                    <Button type="submit" size="icon-sm" aria-label="Save name">
+                    <Button type="submit" size="icon-sm" aria-label="Save name" loading={savingEdit}>
                       <CheckIcon className="size-3.5" />
                     </Button>
                     <Button
@@ -268,6 +282,7 @@ function TaxonomyManager({
                       variant="ghost"
                       size="icon-sm"
                       aria-label="Cancel rename"
+                      disabled={savingEdit}
                       onClick={() => setEditingTerm(null)}
                     >
                       <XMarkIcon className="size-3.5" />
@@ -359,6 +374,7 @@ function TaxonomyManager({
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={deleting}
                   onClick={() => setDeleteTarget(null)}
                 >
                   Cancel
@@ -366,11 +382,17 @@ function TaxonomyManager({
                 <Button
                   type="button"
                   variant="destructive"
+                  loading={deleting}
                   onClick={async () => {
-                    const res = await remove(deleteTarget);
-                    if ("error" in res) onToast(res.error, "bad");
-                    else onToast(`${noun} "${deleteTarget}" deleted.`);
-                    setDeleteTarget(null);
+                    setDeleting(true);
+                    try {
+                      const res = await remove(deleteTarget);
+                      if ("error" in res) onToast(res.error, "bad");
+                      else onToast(`${noun} "${deleteTarget}" deleted.`);
+                      setDeleteTarget(null);
+                    } finally {
+                      setDeleting(false);
+                    }
                   }}
                 >
                   Delete {noun}

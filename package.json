@@ -29,7 +29,6 @@
     "date-fns": "^4.4.0",
     "input-otp": "^1.4.2",
     "next": "^16.2.10",
-    "next-cloudinary": "^6.17.5",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",

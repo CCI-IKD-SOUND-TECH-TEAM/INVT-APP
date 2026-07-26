@@ -351,6 +351,7 @@ function LogDefectModal({
   const [severity, setSeverity] = useState<DefectSeverity | "">("");
   const [dateReported, setDateReported] = useState(TODAY);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -365,13 +366,18 @@ function LogDefectModal({
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
-    await logDefect({
-      item_id: itemId,
-      description: description.trim(),
-      severity: severity as DefectSeverity,
-      date_reported: dateReported,
-    });
-    onClose();
+    setSubmitting(true);
+    try {
+      await logDefect({
+        item_id: itemId,
+        description: description.trim(),
+        severity: severity as DefectSeverity,
+        date_reported: dateReported,
+      });
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -452,10 +458,10 @@ function LogDefectModal({
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Log Defect</Button>
+          <Button type="submit" loading={submitting}>Log Defect</Button>
         </div>
       </form>
     </Modal>
@@ -473,6 +479,7 @@ function StartRepairModal({
   const [date, setDate] = useState(TODAY);
   const [party, setParty] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -481,8 +488,13 @@ function StartRepairModal({
     if (!party.trim()) next.party = "Performing Party is required.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
-    await startRepair(defect.id, date, party.trim());
-    onClose();
+    setSubmitting(true);
+    try {
+      await startRepair(defect.id, date, party.trim());
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -518,10 +530,10 @@ function StartRepairModal({
           )}
         </div>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Start Repair</Button>
+          <Button type="submit" loading={submitting}>Start Repair</Button>
         </div>
       </form>
     </Modal>
@@ -538,6 +550,7 @@ function ResolveModal({
   const { resolveDefect } = useStore();
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -545,8 +558,13 @@ function ResolveModal({
       setError("Resolution Notes are required to mark a defect Resolved.");
       return;
     }
-    await resolveDefect(defect.id, notes.trim());
-    onClose();
+    setSubmitting(true);
+    try {
+      await resolveDefect(defect.id, notes.trim());
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -574,10 +592,10 @@ function ResolveModal({
           )}
         </div>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Mark Resolved</Button>
+          <Button type="submit" loading={submitting}>Mark Resolved</Button>
         </div>
       </form>
     </Modal>
@@ -597,6 +615,7 @@ function NotRepairableModal({
   const [error, setError] = useState("");
   const [followUp, setFollowUp] = useState<"retire" | "set-status">("retire");
   const [newStatus, setNewStatus] = useState<"Available" | "In Use">("Available");
+  const [submitting, setSubmitting] = useState(false);
 
   function submitNotes(e: React.FormEvent) {
     e.preventDefault();
@@ -609,12 +628,17 @@ function NotRepairableModal({
 
   async function submitFollowUp(e: React.FormEvent) {
     e.preventDefault();
-    await markNotRepairable(
-      defect.id,
-      notes.trim(),
-      followUp === "retire" ? { action: "retire" } : { action: "set-status", status: newStatus }
-    );
-    onClose();
+    setSubmitting(true);
+    try {
+      await markNotRepairable(
+        defect.id,
+        notes.trim(),
+        followUp === "retire" ? { action: "retire" } : { action: "set-status", status: newStatus }
+      );
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -700,10 +724,10 @@ function NotRepairableModal({
           )}
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setStep(1)}>
+            <Button type="button" variant="secondary" disabled={submitting} onClick={() => setStep(1)}>
               Back
             </Button>
-            <Button type="submit">Confirm</Button>
+            <Button type="submit" loading={submitting}>Confirm</Button>
           </div>
         </form>
       )}

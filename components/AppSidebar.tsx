@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { IconArchive as ArchiveBoxIcon, IconLogout as ArrowRightStartOnRectangleIcon, IconSettings as Cog6ToothIcon, IconReportAnalytics as DocumentChartBarIcon, IconLayoutDashboard as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -44,12 +45,19 @@ export default function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const { currentUser } = useStore();
   const collapsed = state === "collapsed" && !isMobile;
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // signOut clears the Supabase session server-side and redirects. The old
   // version only navigated, which left the session intact — the proxy would
-  // have bounced the user straight back to /dashboard.
-  function logout() {
-    void signOut();
+  // have bounced the user straight back to /dashboard. Stay in the loading
+  // state through the redirect — no need to reset on success.
+  async function logout() {
+    setLoggingOut(true);
+    try {
+      await signOut();
+    } catch {
+      setLoggingOut(false);
+    }
   }
 
   return (
@@ -152,6 +160,7 @@ export default function AppSidebar() {
               collapsed && "hidden"
             )}
             aria-label="Log out"
+            loading={loggingOut}
             onClick={logout}
           >
             <ArrowRightStartOnRectangleIcon className="size-4" />

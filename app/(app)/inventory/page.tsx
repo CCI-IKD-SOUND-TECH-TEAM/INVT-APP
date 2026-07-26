@@ -54,12 +54,14 @@ function InventoryCard({
   item,
   categoryLabel,
   highlighted,
+  reactivating,
   onRetire,
   onReactivate,
 }: {
   item: InventoryItem;
   categoryLabel: string;
   highlighted: boolean;
+  reactivating: boolean;
   onRetire: () => void;
   onReactivate: () => void;
 }) {
@@ -116,6 +118,7 @@ function InventoryCard({
                 size="icon-sm"
                 className="text-ink-faint hover:text-foreground"
                 aria-label={`Reactivate ${item.item_name}`}
+                loading={reactivating}
                 onClick={onReactivate}
               >
                 <CheckIcon className="size-4" />
@@ -216,6 +219,29 @@ function InventoryContent() {
   const [page, setPage] = useState(1);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [retireTarget, setRetireTarget] = useState<InventoryItem | null>(null);
+  const [retiring, setRetiring] = useState(false);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+
+  async function handleReactivate(id: string) {
+    if (reactivatingId) return;
+    setReactivatingId(id);
+    try {
+      await reactivateItem(id);
+    } finally {
+      setReactivatingId(null);
+    }
+  }
+
+  async function handleRetireConfirm() {
+    if (!retireTarget) return;
+    setRetiring(true);
+    try {
+      await retireItem(retireTarget.id);
+      setRetireTarget(null);
+    } finally {
+      setRetiring(false);
+    }
+  }
 
   const activeFilterCount =
     statusFilter.size +
@@ -527,7 +553,8 @@ function InventoryContent() {
                             size="icon-sm"
                             className="text-ink-faint hover:text-foreground"
                             aria-label={`Reactivate ${item.item_name}`}
-                            onClick={() => reactivateItem(item.id)}
+                            loading={reactivatingId === item.id}
+                            onClick={() => handleReactivate(item.id)}
                           >
                             <CheckIcon className="size-4" />
                           </Button>
@@ -580,7 +607,8 @@ function InventoryContent() {
               item={item}
               categoryLabel={categoryName(item.category_id)}
               highlighted={item.id === highlightId}
-              onReactivate={() => reactivateItem(item.id)}
+              reactivating={reactivatingId === item.id}
+              onReactivate={() => handleReactivate(item.id)}
               onRetire={() => setRetireTarget(item)}
             />
           ))}
@@ -651,16 +679,19 @@ function InventoryContent() {
             trail.
           </p>
           <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setRetireTarget(null)}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={retiring}
+              onClick={() => setRetireTarget(null)}
+            >
               Cancel
             </Button>
             <Button
               type="button"
               variant="destructive"
-              onClick={() => {
-                retireItem(retireTarget.id);
-                setRetireTarget(null);
-              }}
+              loading={retiring}
+              onClick={handleRetireConfirm}
             >
               Retire Item
             </Button>
@@ -688,10 +719,11 @@ function BulkImportModal({
 }: {
   onClose: () => void;
   onDownloadTemplate: () => void;
-  onImport: (rows: NewItemInput[]) => void;
+  onImport: (rows: NewItemInput[]) => void | Promise<void>;
 }) {
   const { categories, units, categoryIdByName, departmentIdByName } = useStore();
   const [fileName, setFileName] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{
     valid: number;
     errors: { row: number; reason: string }[];
@@ -770,10 +802,17 @@ function BulkImportModal({
   function handleFile(file: File) {
     setFileName(file.name);
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const text = String(reader.result ?? "");
       const { rows, errors } = parseCsv(text);
-      if (rows.length > 0) onImport(rows);
+      if (rows.length > 0) {
+        setImporting(true);
+        try {
+          await onImport(rows);
+        } finally {
+          setImporting(false);
+        }
+      }
       setResult({ valid: rows.length, errors });
     };
     reader.readAsText(file);
@@ -792,10 +831,19 @@ function BulkImportModal({
       </div>
 
       <p className="h-title mb-2.5 text-[0.9375rem]">2. Upload your completed file</p>
-      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-8 text-center text-muted-foreground transition-colors duration-150 hover:border-brand hover:bg-brand-tint">
+      <label
+        className={cn(
+          "flex flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-8 text-center text-muted-foreground transition-colors duration-150",
+          importing
+            ? "cursor-not-allowed opacity-60"
+            : "cursor-pointer hover:border-brand hover:bg-brand-tint"
+        )}
+      >
         <ArrowUpTrayIcon className="size-[22px]" />
         <span>
-          {fileName ? (
+          {importing ? (
+            <strong className="text-foreground">Importing…</strong>
+          ) : fileName ? (
             <strong className="text-foreground">{fileName}</strong>
           ) : (
             "Click to choose a CSV file, or drag it here"
@@ -805,6 +853,7 @@ function BulkImportModal({
           type="file"
           accept=".csv"
           className="sr-only"
+          disabled={importing}
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) handleFile(file);

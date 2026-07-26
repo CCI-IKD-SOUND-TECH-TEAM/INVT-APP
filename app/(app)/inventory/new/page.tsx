@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
-import { CldUploadWidget } from "next-cloudinary";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useStore, type NewItemInput } from "@/lib/store";
 import type { AssetType, InventoryItem } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
@@ -137,6 +136,10 @@ function ItemFormContent() {
   );
   const [showRetire, setShowRetire] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [retiring, setRetiring] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasOpenDefect =
     isEdit &&
@@ -198,8 +201,8 @@ function ItemFormContent() {
     return Object.keys(next).length === 0;
   }
 
-  // Cloudinary fires onSuccess once per uploaded file; use a functional update
-  // so appends don't clobber each other across multiple files in one session.
+  // One upload finishes at a time; use a functional update so appends don't
+  // clobber each other across multiple files in one session.
   function addImage(url: string) {
     setForm((f) =>
       f.images.length >= 5 ? f : { ...f, images: [...f.images, url] }
@@ -207,9 +210,63 @@ function ItemFormContent() {
     setErrors((e) => ({ ...e, images: undefined }));
   }
 
+  const ALLOWED_TYPES = ["image/jpeg", "image/png"];
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+  // Signed direct upload — send the file straight to Cloudinary with a
+  // server-generated signature, never showing Cloudinary's own UI.
+  async function uploadFile(file: File) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setErrors((e) => ({ ...e, images: "Only JPG and PNG images are allowed." }));
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setErrors((e) => ({ ...e, images: "Each image must be 5MB or smaller." }));
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const signRes = await fetch("/api/sign-cloudinary", { method: "POST" });
+      if (!signRes.ok) throw new Error("sign failed");
+      const { signature, timestamp, folder, apiKey, cloudName } =
+        await signRes.json();
+
+      const data = new FormData();
+      data.append("file", file);
+      data.append("api_key", apiKey);
+      data.append("timestamp", String(timestamp));
+      data.append("folder", folder);
+      data.append("signature", signature);
+
+      const uploadRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        { method: "POST", body: data }
+      );
+      if (!uploadRes.ok) throw new Error("upload failed");
+      const { secure_url } = await uploadRes.json();
+      addImage(secure_url);
+    } catch {
+      setErrors((e) => ({ ...e, images: "Upload failed. Please try again." }));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const remaining = 5 - form.images.length;
+    for (const file of files.slice(0, remaining)) {
+      await uploadFile(file);
+    }
+    // Reset so re-selecting the same file re-fires onChange.
+    e.target.value = "";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
+    if (submitting) return;
 
     const payload: NewItemInput = {
       item_name: form.name.trim(),
@@ -230,20 +287,29 @@ function ItemFormContent() {
       images: form.images,
     };
 
-    let id: string;
-    if (isEdit && editingItem) {
-      await updateItem(editingItem.id, payload);
-      id = editingItem.id;
-    } else {
-      const created = await addItem(payload);
-      if (!created) return;
-      id = created.id;
-    }
+    setSubmitting(true);
+    try {
+      let id: string;
+      if (isEdit && editingItem) {
+        await updateItem(editingItem.id, payload);
+        id = editingItem.id;
+      } else {
+        const created = await addItem(payload);
+        if (!created) {
+          setSubmitting(false);
+          return;
+        }
+        id = created.id;
+      }
 
-    setSaved(true);
-    window.setTimeout(() => {
-      router.push(`/inventory?highlight=${id}`);
-    }, 550);
+      setSaved(true);
+      window.setTimeout(() => {
+        router.push(`/inventory?highlight=${id}`);
+      }, 550);
+      // Leave `submitting` true through the redirect so the button stays busy.
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -553,37 +619,34 @@ function ItemFormContent() {
           )}
 
           {form.images.length < 5 && (
-            <CldUploadWidget
-              signatureEndpoint="/api/sign-cloudinary"
-              options={{
-                sources: ["local", "camera", "url"],
-                multiple: true,
-                maxFiles: 5 - form.images.length,
-                clientAllowedFormats: ["jpg", "jpeg", "png"],
-                maxFileSize: 5 * 1024 * 1024,
-                folder: "inventory-items",
-              }}
-              onSuccess={(result) => {
-                const info = result?.info;
-                if (info && typeof info === "object" && "secure_url" in info) {
-                  addImage((info as { secure_url: string }).secure_url);
-                }
-              }}
-            >
-              {({ open }) => (
-                <button
-                  type="button"
-                  onClick={() => open()}
-                  className="flex cursor-pointer flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-6 text-center text-muted-foreground transition-colors duration-150 hover:border-ink-faint"
-                >
-                  <PhotoIcon className="size-6" />
-                  <span>
-                    <strong className="text-foreground">Click to upload</strong> —
-                    JPG/PNG, up to 5MB each
-                  </span>
-                </button>
-              )}
-            </CldUploadWidget>
+            <>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex cursor-pointer flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-6 text-center text-muted-foreground transition-colors duration-150 hover:border-ink-faint disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <PhotoIcon className="size-6" />
+                <span>
+                  {uploading ? (
+                    <strong className="text-foreground">Uploading…</strong>
+                  ) : (
+                    <>
+                      <strong className="text-foreground">Click to upload</strong> —
+                      JPG/PNG, up to 5MB each
+                    </>
+                  )}
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                multiple
+                hidden
+                onChange={onFilesSelected}
+              />
+            </>
           )}
         </Section>
 
@@ -623,7 +686,9 @@ function ItemFormContent() {
             <Button asChild variant="secondary">
               <Link href="/inventory">Cancel</Link>
             </Button>
-            <Button type="submit">{isEdit ? "Save Changes" : "Save Item"}</Button>
+            <Button type="submit" loading={submitting}>
+              {isEdit ? "Save Changes" : "Save Item"}
+            </Button>
           </div>
         </div>
       </form>
@@ -637,16 +702,27 @@ function ItemFormContent() {
             trail.
           </p>
           <div className="mt-5 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setShowRetire(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={retiring}
+              onClick={() => setShowRetire(false)}
+            >
               Cancel
             </Button>
             <Button
               type="button"
               variant="destructive"
+              loading={retiring}
               onClick={async () => {
-                await retireItem(editingItem.id);
-                setShowRetire(false);
-                router.push("/inventory");
+                setRetiring(true);
+                try {
+                  await retireItem(editingItem.id);
+                  setShowRetire(false);
+                  router.push("/inventory");
+                } catch {
+                  setRetiring(false);
+                }
               }}
             >
               Retire Item
