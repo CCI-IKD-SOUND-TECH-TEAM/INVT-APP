@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useStore, type MutationResult } from "@/lib/store";
+import { inviteUser, requestSignIn } from "@/app/actions/auth";
+import type { Profile } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Modal from "@/components/Modal";
-import { IconCheck as CheckIcon, IconAlertTriangle as ExclamationTriangleIcon, IconKey as KeyIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconTrash as TrashIcon, IconX as XMarkIcon } from "@tabler/icons-react";
+import { IconCheck as CheckIcon, IconMail as EnvelopeIcon, IconAlertTriangle as ExclamationTriangleIcon, IconKey as KeyIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconTrash as TrashIcon, IconX as XMarkIcon } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 function initials(name: string) {
@@ -18,14 +20,6 @@ function initials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
-}
-
-// first.last@… — handles single- and multi-word names.
-function emailFor(name: string) {
-  const parts = name.trim().toLowerCase().split(/\s+/);
-  const local =
-    parts.length > 1 ? `${parts[0]}.${parts[parts.length - 1]}` : parts[0];
-  return `${local}@ccikorodu.org`;
 }
 
 type Toast = { message: string; tone: "good" | "bad" } | null;
@@ -72,11 +66,16 @@ export default function SettingsPage() {
       />
 
       <UserAccounts
-        users={store.users}
-        onReset={(name) => {
-          store.resetUserPassword(name);
-          flash(`Password reset link issued to ${name}.`);
+        profiles={store.profiles}
+        onSent={(name, kind) => {
+          store.logAccessEmail(name, kind);
+          flash(
+            kind === "invite"
+              ? `Invite sent to ${name}.`
+              : `Sign-in link sent to ${name}.`
+          );
         }}
+        onError={(message) => flash(message, "bad")}
       />
 
       {toast && (
@@ -385,81 +384,134 @@ function TaxonomyManager({
   );
 }
 
+/**
+ * Sign-in is passwordless, so there is no password to reset. Each row offers
+ * whichever email actually helps that person: an invite for staff who have
+ * never signed in, a fresh sign-in link for everyone else.
+ */
 function UserAccounts({
-  users,
-  onReset,
+  profiles,
+  onSent,
+  onError,
 }: {
-  users: string[];
-  onReset: (name: string) => void;
+  profiles: Profile[];
+  onSent: (name: string, kind: "invite" | "sign-in") => void;
+  onError: (message: string) => void;
 }) {
-  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [target, setTarget] = useState<Profile | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  // Never signed in -> they need an account created, not a link.
+  const kindFor = (p: Profile): "invite" | "sign-in" =>
+    p.last_login_at ? "sign-in" : "invite";
+
+  function send(profile: Profile) {
+    const kind = kindFor(profile);
+    startTransition(async () => {
+      const result =
+        kind === "invite"
+          ? await inviteUser(profile.email, profile.full_name)
+          : await requestSignIn(profile.email);
+
+      setTarget(null);
+      if (result.ok) onSent(profile.full_name, kind);
+      else onError(result.error);
+    });
+  }
 
   return (
     <Card className="gap-4">
       <CardHeader>
         <CardTitle>User Accounts</CardTitle>
         <span className="text-xs text-ink-faint">
-          {users.length} accounts · equal access
+          {profiles.length} accounts · equal access
         </span>
       </CardHeader>
       <div className="flex flex-col">
-        {users.map((u, idx) => (
-          <div
-            key={u}
-            className={cn(
-              "flex items-center justify-between gap-4 border-t border-line-subtle py-3",
-              idx === 0 && "border-t-0 pt-0"
-            )}
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar>
-                <AvatarFallback>{initials(u)}</AvatarFallback>
-              </Avatar>
-              <div className="flex min-w-0 flex-col">
-                <strong className="truncate text-sm font-bold">{u}</strong>
-                <span className="truncate text-xs text-ink-faint">
-                  {emailFor(u)}
-                </span>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setResetTarget(u)}
+        {profiles.map((profile, idx) => {
+          const kind = kindFor(profile);
+          return (
+            <div
+              key={profile.id}
+              className={cn(
+                "flex items-center justify-between gap-4 border-t border-line-subtle py-3",
+                idx === 0 && "border-t-0 pt-0"
+              )}
             >
-              <KeyIcon className="size-3.5" /> Reset Password
-            </Button>
-          </div>
-        ))}
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar>
+                  <AvatarFallback>{initials(profile.full_name)}</AvatarFallback>
+                </Avatar>
+                <div className="flex min-w-0 flex-col">
+                  <strong className="truncate text-sm font-bold">
+                    {profile.full_name}
+                  </strong>
+                  <span className="truncate text-xs text-ink-faint">
+                    {profile.email}
+                    {kind === "invite" && " · never signed in"}
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending}
+                onClick={() => setTarget(profile)}
+              >
+                {kind === "invite" ? (
+                  <>
+                    <EnvelopeIcon className="size-3.5" /> Send Invite
+                  </>
+                ) : (
+                  <>
+                    <KeyIcon className="size-3.5" /> Send Sign-in Link
+                  </>
+                )}
+              </Button>
+            </div>
+          );
+        })}
       </div>
 
-      {resetTarget && (
+      {target && (
         <Modal
-          title="Reset password?"
-          onClose={() => setResetTarget(null)}
+          title={
+            kindFor(target) === "invite" ? "Send invite?" : "Send sign-in link?"
+          }
+          onClose={() => setTarget(null)}
         >
           <p className="text-muted-foreground">
-            A password reset link will be sent to{" "}
-            <strong className="text-foreground">{emailFor(resetTarget)}</strong>.
-            Their current password keeps working until they set a new one.
+            {kindFor(target) === "invite" ? (
+              <>
+                We&apos;ll email{" "}
+                <strong className="text-foreground">{target.email}</strong> a
+                welcome message with a code to get started. There&apos;s no
+                password to set up.
+              </>
+            ) : (
+              <>
+                We&apos;ll email{" "}
+                <strong className="text-foreground">{target.email}</strong> a
+                fresh 6-digit code and sign-in link. It expires in 10 minutes.
+              </>
+            )}
           </p>
           <div className="mt-5 flex justify-end gap-2">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setResetTarget(null)}
+              disabled={pending}
+              onClick={() => setTarget(null)}
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                onReset(resetTarget);
-                setResetTarget(null);
-              }}
-            >
-              Send Reset Link
+            <Button type="button" disabled={pending} onClick={() => send(target)}>
+              {pending
+                ? "Sending…"
+                : kindFor(target) === "invite"
+                  ? "Send Invite"
+                  : "Send Link"}
             </Button>
           </div>
         </Modal>

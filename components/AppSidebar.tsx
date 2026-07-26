@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { IconArchive as ArchiveBoxIcon, IconLogout as ArrowRightStartOnRectangleIcon, IconSettings as Cog6ToothIcon, IconReportAnalytics as DocumentChartBarIcon, IconLayoutDashboard as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { CURRENT_USER } from "@/lib/types";
+import { useStore } from "@/lib/store";
+import { signOut } from "@/app/actions/auth";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: Squares2X2Icon },
@@ -40,12 +41,15 @@ function initials(name: string) {
 
 export default function AppSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { state, isMobile, setOpenMobile } = useSidebar();
+  const { currentUser } = useStore();
   const collapsed = state === "collapsed" && !isMobile;
 
+  // signOut clears the Supabase session server-side and redirects. The old
+  // version only navigated, which left the session intact — the proxy would
+  // have bounced the user straight back to /dashboard.
   function logout() {
-    router.push("/login");
+    void signOut();
   }
 
   return (
@@ -126,7 +130,7 @@ export default function AppSidebar() {
           )}
         >
           <Avatar>
-            <AvatarFallback>{initials(CURRENT_USER)}</AvatarFallback>
+            <AvatarFallback>{initials(currentUser.full_name)}</AvatarFallback>
           </Avatar>
           <span
             className={cn(
@@ -135,7 +139,7 @@ export default function AppSidebar() {
             )}
           >
             <span className="truncate text-[0.8125rem] font-bold">
-              {CURRENT_USER}
+              {currentUser.full_name}
             </span>
             <span className="text-xs text-ink-faint">Church Staff</span>
           </span>

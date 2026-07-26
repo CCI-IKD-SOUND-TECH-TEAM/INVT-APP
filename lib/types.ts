@@ -114,6 +114,21 @@ export interface AuditEntry {
   detail: string;
 }
 
+/** The signed-in staff member, resolved from the Supabase session. */
+export interface SessionUser {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
+/**
+ * Seed-data identity only.
+ *
+ * The signed-in user now comes from the session — see SessionUser above, loaded
+ * in app/(app)/layout.tsx and read via `useStore().currentUser`. These constants
+ * remain solely so lib/mock-data.ts can stamp created_by/updated_by on the
+ * fixture rows the UI still renders; nothing in the running app should read them.
+ */
 export const CURRENT_USER = "Tolu Adebayo";
 export const CURRENT_USER_ID = "usr-tolu-adebayo";
 

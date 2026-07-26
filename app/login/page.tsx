@@ -1,18 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { IconCircleCheck as CheckCircleIcon, IconAlertTriangle as ExclamationTriangleIcon, IconEye as EyeIcon, IconEyeOff as EyeSlashIcon } from "@tabler/icons-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  IconCircleCheck as CheckCircleIcon,
+  IconAlertTriangle as ExclamationTriangleIcon,
+  IconArrowLeft as ArrowLeftIcon,
+  IconEye as EyeIcon,
+  IconEyeOff as EyeSlashIcon,
+} from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { cn } from "@/lib/utils";
+import {
+  requestSignIn,
+  verifyCode,
+  signInWithPassword,
+  signUpWithPassword,
+} from "@/app/actions/auth";
 
-const DEMO_EMAIL = "staff@ccikorodu.org";
-const DEMO_PASSWORD = "demo1234";
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 15 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 60 * 1000;
+
+type Method = "password" | "otp";
+type AuthMode = "signin" | "signup";
 
 function formatRemaining(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -35,64 +54,201 @@ function BrandMark({ className }: { className?: string }) {
   );
 }
 
+/** Errors handed back by /auth/confirm when a magic link fails. */
+const LINK_ERRORS: Record<string, string> = {
+  invalid_link: "That sign-in link was incomplete. Request a new code below.",
+  expired_link: "That sign-in link has expired or was already used.",
+};
+
 export default function LoginPage() {
+  return (
+    // useSearchParams needs a Suspense boundary, otherwise the whole route
+    // opts into client-side rendering.
+    <Suspense fallback={null}>
+      <LoginView />
+    </Suspense>
+  );
+}
+
+function LoginView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [method, setMethod] = useState<Method>("password");
+  const [authMode, setAuthMode] = useState<AuthMode>("signin");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [code, setCode] = useState("");
+
   const [attempts, setAttempts] = useState(0);
   const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [resendAt, setResendAt] = useState<number | null>(null);
+
   const [error, setError] = useState<string | null>(null);
-  const [forgotSent, setForgotSent] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [linkErrorDismissed, setLinkErrorDismissed] = useState(false);
+  const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
 
   const locked = lockUntil !== null && now < lockUntil;
+  const resendWaitMs = resendAt !== null ? resendAt - now : 0;
+  const canResend = resendWaitMs <= 0;
 
+  // A failed magic link arrives as ?error= from /auth/confirm. Derived during
+  // render rather than copied into state by an effect; it clears as soon as the
+  // user acts.
+  const linkErrorKey = searchParams.get("error");
+  const linkError =
+    !linkErrorDismissed && linkErrorKey ? LINK_ERRORS[linkErrorKey] : undefined;
+  const shownError = error ?? linkError ?? null;
+
+  // One ticker drives both the lockout countdown and the resend cooldown.
   useEffect(() => {
-    if (!locked) return;
+    if (!locked && canResend) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [locked]);
+  }, [locked, canResend]);
 
-  const canSubmit = useMemo(
-    () => email.trim().length > 0 && password.length > 0 && !locked && !submitting,
-    [email, password, locked, submitting]
+  function clearMessages() {
+    setError(null);
+    setNotice(null);
+    setLinkErrorDismissed(true);
+  }
+
+  function goToDashboard() {
+    // refresh() so the proxy and server layouts observe the new session cookie
+    // before the dashboard renders.
+    router.replace("/dashboard");
+    router.refresh();
+  }
+
+  function switchMethod(next: Method) {
+    if (next === method) return;
+    setMethod(next);
+    clearMessages();
+    setStep("email");
+    setCode("");
+    setPassword("");
+  }
+
+  // --- Password ------------------------------------------------------------
+  const canSubmitPassword = useMemo(
+    () => email.trim().length > 0 && password.length > 0 && !pending,
+    [email, password, pending]
   );
 
-  function handleSubmit(e: React.FormEvent) {
+  function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
-    setError(null);
-    setSubmitting(true);
+    if (!canSubmitPassword) return;
+    clearMessages();
 
-    // An expired lock starts a fresh attempt cycle rather than re-locking on one miss.
-    const lockExpired = lockUntil !== null && Date.now() >= lockUntil;
-    const baseAttempts = lockExpired ? 0 : attempts;
-
-    window.setTimeout(() => {
-      const ok =
-        email.trim().toLowerCase() === DEMO_EMAIL && password === DEMO_PASSWORD;
-
-      if (ok) {
-        router.push("/dashboard");
+    startTransition(async () => {
+      if (authMode === "signin") {
+        const result = await signInWithPassword(email, password);
+        if (result.ok) return goToDashboard();
+        setError(result.error ?? "Couldn't sign in.");
         return;
       }
 
-      setSubmitting(false);
+      const result = await signUpWithPassword(email, password);
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't create the account.");
+        return;
+      }
+      if (result.needsConfirmation) {
+        setNotice(
+          `Account created. Check ${email.trim()} for a confirmation link before signing in.`
+        );
+        setAuthMode("signin");
+        setPassword("");
+        return;
+      }
+      goToDashboard();
+    });
+  }
+
+  // --- OTP -----------------------------------------------------------------
+  const canSubmitEmail = useMemo(
+    () => email.trim().length > 0 && !pending,
+    [email, pending]
+  );
+
+  function sendCode(target: string, isResend: boolean) {
+    clearMessages();
+    startTransition(async () => {
+      const result = await requestSignIn(target);
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't send the code.");
+        return;
+      }
+      setStep("code");
+      setCode("");
+      setResendAt(Date.now() + RESEND_COOLDOWN_MS);
+      setNow(Date.now());
+      setNotice(
+        isResend
+          ? "New code sent. The previous one no longer works."
+          : `We sent a 6-digit code to ${target.trim()}.`
+      );
+    });
+  }
+
+  function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmitEmail) return;
+    sendCode(email, false);
+  }
+
+  function submitCode(value: string) {
+    if (locked || pending) return;
+    clearMessages();
+
+    startTransition(async () => {
+      const result = await verifyCode(email, value);
+      if (result.ok) return goToDashboard();
+
+      // A 6-digit code is brute-forceable, so keep the attempt lockout here.
+      const lockExpired = lockUntil !== null && Date.now() >= lockUntil;
+      const nextAttempts = (lockExpired ? 0 : attempts) + 1;
       if (lockExpired) setLockUntil(null);
-      const nextAttempts = baseAttempts + 1;
       setAttempts(nextAttempts);
+      setCode("");
 
       if (nextAttempts >= MAX_ATTEMPTS) {
         setLockUntil(Date.now() + LOCK_MS);
         setNow(Date.now());
       } else {
-        setError("Invalid username or password.");
+        setError(result.error ?? "That code isn't valid.");
       }
-      setPassword("");
-    }, 500);
+    });
   }
+
+  function backToEmail() {
+    setStep("email");
+    setCode("");
+    clearMessages();
+  }
+
+  // --- Copy ----------------------------------------------------------------
+  const heading =
+    method === "otp" && step === "code"
+      ? "Check your email"
+      : method === "password" && authMode === "signup"
+        ? "Create your account"
+        : "Welcome back";
+
+  const subtitle =
+    method === "otp"
+      ? step === "code"
+        ? "Enter the 6-digit code, or tap the link in the email."
+        : "Enter your email and we'll send you a sign-in code."
+      : authMode === "signup"
+        ? "Sign up with an email and password."
+        : "Sign in with your email and password.";
 
   return (
     <div className="grid min-h-screen bg-background md:grid-cols-[1.1fr_1fr]">
@@ -136,8 +292,32 @@ export default function LoginPage() {
             <span className="font-display text-[1.1rem] tracking-wide">Ikorodu Inventory</span>
           </div>
 
-          <h2 className="mb-1.5 font-display text-[clamp(1.75rem,3vw,2.25rem)]">Welcome back</h2>
-          <p className="mb-8 text-muted-foreground">Log in to manage church assets.</p>
+          <h2 className="mb-1.5 font-display text-[clamp(1.75rem,3vw,2.25rem)]">
+            {heading}
+          </h2>
+          <p className="mb-6 text-muted-foreground">{subtitle}</p>
+
+          {/* Method toggle — hidden on the OTP code screen, where you're
+              mid-flow and switching would lose the pending code. */}
+          {!(method === "otp" && step === "code") && (
+            <div className="mb-6 grid grid-cols-2 gap-1 rounded-md border border-border bg-surface-sunken p-1">
+              {(["password", "otp"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => switchMethod(m)}
+                  className={cn(
+                    "rounded-sm px-3 py-1.5 text-[0.8125rem] font-bold transition-colors duration-150",
+                    method === m
+                      ? "bg-surface-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {m === "password" ? "Password" : "Email code"}
+                </button>
+              ))}
+            </div>
+          )}
 
           {locked && (
             <div
@@ -146,104 +326,211 @@ export default function LoginPage() {
             >
               <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
               <span>
-                Too many failed attempts. Your account is locked. Try again in{" "}
+                Too many incorrect codes. Try again in{" "}
                 <strong>{formatRemaining(lockUntil! - now)}</strong>.
               </span>
             </div>
           )}
 
-          {!locked && error && (
+          {!locked && shownError && (
             <div
               className="mb-4 flex items-start gap-2.5 rounded-md border border-brand-deep bg-brand-tint p-3.5 text-[0.8125rem] text-brand"
               role="alert"
             >
               <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0" />
-              <span>{error}</span>
+              <span>{shownError}</span>
             </div>
           )}
 
-          {forgotSent && (
+          {!shownError && notice && (
             <div
               className="mb-4 flex items-start gap-2.5 rounded-md border border-status-good bg-status-good-bg p-3.5 text-[0.8125rem] text-status-good"
               role="status"
             >
               <CheckCircleIcon className="mt-0.5 size-4 shrink-0" />
-              <span>
-                If an account exists for that email, a password reset link has
-                been sent.
-              </span>
+              <span>{notice}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate>
-            <div className="mb-4">
-              <Label htmlFor="email">Username or Email</Label>
-              <Input
-                id="email"
-                type="text"
-                autoComplete="username"
-                placeholder="you@ccikorodu.org"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={locked}
-              />
-            </div>
-
-            <div className="mb-4">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
+          {method === "password" ? (
+            <form onSubmit={handlePasswordSubmit} noValidate>
+              <div className="mb-4">
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={locked}
-                  className="pr-11"
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  placeholder="you@ccikorodu.org"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={pending}
                 />
+              </div>
+
+              <div className="mb-6">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete={
+                      authMode === "signup" ? "new-password" : "current-password"
+                    }
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={pending}
+                    className="pr-11"
+                  />
+                  <button
+                    type="button"
+                    className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-sm p-1.5 text-ink-faint transition-colors duration-150 hover:text-foreground"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    disabled={pending}
+                  >
+                    {showPassword ? (
+                      <EyeSlashIcon className="size-[17px]" />
+                    ) : (
+                      <EyeIcon className="size-[17px]" />
+                    )}
+                  </button>
+                </div>
+                {authMode === "signup" && (
+                  <p className="field-hint">
+                    6+ characters, with an uppercase letter, a lowercase letter,
+                    and a number.
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={!canSubmitPassword}
+              >
+                {pending
+                  ? authMode === "signup"
+                    ? "Creating account…"
+                    : "Signing in…"
+                  : authMode === "signup"
+                    ? "Create Account"
+                    : "Sign In"}
+              </Button>
+
+              <div className="mt-6 text-center text-[0.8125rem] text-muted-foreground">
+                {authMode === "signin" ? (
+                  <>
+                    Don&apos;t have an account?{" "}
+                    <button
+                      type="button"
+                      className="font-bold text-brand transition-colors duration-150 hover:text-brand-deep hover:underline"
+                      onClick={() => {
+                        setAuthMode("signup");
+                        clearMessages();
+                      }}
+                      disabled={pending}
+                    >
+                      Create one
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Already have an account?{" "}
+                    <button
+                      type="button"
+                      className="font-bold text-brand transition-colors duration-150 hover:text-brand-deep hover:underline"
+                      onClick={() => {
+                        setAuthMode("signin");
+                        clearMessages();
+                      }}
+                      disabled={pending}
+                    >
+                      Sign in
+                    </button>
+                  </>
+                )}
+              </div>
+            </form>
+          ) : step === "email" ? (
+            <form onSubmit={handleEmailSubmit} noValidate>
+              <div className="mb-6">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  placeholder="you@ccikorodu.org"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
+
+              <Button type="submit" className="w-full" disabled={!canSubmitEmail}>
+                {pending ? "Sending code…" : "Send Code"}
+              </Button>
+            </form>
+          ) : (
+            <div>
+              <div className="mb-6">
+                <Label htmlFor="code">6-digit code</Label>
+                <InputOTP
+                  id="code"
+                  maxLength={6}
+                  value={code}
+                  onChange={setCode}
+                  onComplete={submitCode}
+                  disabled={locked || pending}
+                  autoFocus
+                  containerClassName="w-full"
+                >
+                  <InputOTPGroup className="w-full">
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <InputOTPSlot key={i} index={i} />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
+                <p className="field-hint">
+                  {pending ? "Verifying…" : "The code expires in 10 minutes."}
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full"
+                disabled={code.length !== 6 || locked || pending}
+                onClick={() => submitCode(code)}
+              >
+                {pending ? "Verifying…" : "Sign In"}
+              </Button>
+
+              <div className="mt-6 flex items-center justify-between gap-3">
                 <button
                   type="button"
-                  className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-sm p-1.5 text-ink-faint transition-colors duration-150 hover:text-foreground"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  disabled={locked}
+                  className="flex items-center gap-1.5 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                  onClick={backToEmail}
+                  disabled={pending}
                 >
-                  {showPassword ? (
-                    <EyeSlashIcon className="size-[17px]" />
-                  ) : (
-                    <EyeIcon className="size-[17px]" />
-                  )}
+                  <ArrowLeftIcon className="size-3.5" />
+                  Use a different email
+                </button>
+
+                <button
+                  type="button"
+                  className="text-[0.8125rem] font-bold text-brand transition-colors duration-150 hover:text-brand-deep hover:underline disabled:text-ink-faint disabled:no-underline disabled:hover:no-underline"
+                  onClick={() => sendCode(email, true)}
+                  disabled={!canResend || pending}
+                >
+                  {canResend
+                    ? "Resend code"
+                    : `Resend in ${formatRemaining(resendWaitMs)}`}
                 </button>
               </div>
             </div>
-
-            <div className="mb-6 flex items-center justify-between">
-              <span />
-              <button
-                type="button"
-                className="text-[0.8125rem] font-bold text-brand transition-colors duration-150 hover:text-brand-deep hover:underline"
-                onClick={() => setForgotSent(true)}
-              >
-                Forgot Password?
-              </button>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={!canSubmit}>
-              {submitting ? "Logging in…" : "Log In"}
-            </Button>
-          </form>
-
-          <div className="mt-6 border-t border-line-subtle pt-6 text-center text-xs text-ink-faint">
-            Demo access:{" "}
-            <code className="rounded bg-surface px-1.5 py-0.5 text-muted-foreground">
-              {DEMO_EMAIL}
-            </code>{" "}
-            /{" "}
-            <code className="rounded bg-surface px-1.5 py-0.5 text-muted-foreground">
-              {DEMO_PASSWORD}
-            </code>
-          </div>
+          )}
         </div>
       </div>
     </div>

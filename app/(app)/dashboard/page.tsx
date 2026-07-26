@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
+import { isLowStock } from "@/lib/inventory";
 import { Button } from "@/components/ui/button";
 import { IconArchive as ArchiveBoxIcon, IconPlus as PlusIcon } from "@tabler/icons-react";
 import SectionCards from "@/components/dashboard/SectionCards";
@@ -23,12 +24,7 @@ export default function DashboardPage() {
     (i) => i.status === "Defective" || i.status === "Under Repair"
   ).length;
   const lowStockItems = useMemo(
-    () =>
-      nonRetired.filter(
-        (i) =>
-          typeof i.minimum_stock_threshold === "number" &&
-          i.quantity <= i.minimum_stock_threshold
-      ),
+    () => nonRetired.filter(isLowStock),
     [nonRetired]
   );
 

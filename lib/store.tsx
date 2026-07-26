@@ -16,6 +16,10 @@ import {
   INITIAL_PROFILES,
   UNITS_OF_MEASURE,
 } from "./mock-data";
+import {
+  notifyDefectClosed,
+  notifyDefectLogged,
+} from "@/app/actions/notifications";
 import type {
   AuditActionType,
   Category,
@@ -24,8 +28,8 @@ import type {
   Department,
   InventoryItem,
   Profile,
+  SessionUser,
 } from "./types";
-import { CURRENT_USER, CURRENT_USER_ID } from "./types";
 
 export type MutationResult = { ok: true } | { ok: false; error: string };
 
@@ -43,6 +47,8 @@ function todayIso() {
 }
 
 interface StoreValue {
+  /** The signed-in staff member. Stamped onto every audit entry. */
+  currentUser: SessionUser;
   items: InventoryItem[];
   defects: Defect[];
   activity: typeof INITIAL_ACTIVITY;
@@ -91,7 +97,7 @@ interface StoreValue {
   addUnit: (name: string) => MutationResult;
   renameUnit: (from: string, to: string) => MutationResult;
   deleteUnit: (name: string) => MutationResult;
-  resetUserPassword: (name: string) => void;
+  logAccessEmail: (name: string, kind: "invite" | "sign-in") => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -102,7 +108,14 @@ function nextId(prefix: string) {
   return `${prefix}-${idCounter}`;
 }
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
+export function StoreProvider({
+  currentUser,
+  children,
+}: {
+  /** Resolved from the Supabase session in app/(app)/layout.tsx. */
+  currentUser: SessionUser;
+  children: React.ReactNode;
+}) {
   const [items, setItems] = useState<InventoryItem[]>(INITIAL_ITEMS);
   const [defects, setDefects] = useState<Defect[]>(INITIAL_DEFECTS);
   const [activity, setActivity] = useState(INITIAL_ACTIVITY);
@@ -155,7 +168,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         {
           id: nextId("act"),
           timestamp: nowIso(),
-          user: CURRENT_USER,
+          user: currentUser.full_name,
           actionType,
           recordLabel,
           detail,
@@ -163,7 +176,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ...prev,
       ]);
     },
-    []
+    [currentUser.full_name]
   );
 
   const addItem = useCallback(
@@ -173,8 +186,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ...input,
         id: nextId("itm"),
         status: "Available",
-        created_by: CURRENT_USER_ID,
-        updated_by: CURRENT_USER_ID,
+        created_by: currentUser.id,
+        updated_by: currentUser.id,
         created_at: ts,
         updated_at: ts,
       };
@@ -182,23 +195,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       pushActivity("Create", item.item_name, "Added new item to inventory.");
       return item;
     },
-    [pushActivity]
+    [currentUser.id, pushActivity]
   );
 
-  const updateItem = useCallback((id: string, patch: Partial<InventoryItem>) => {
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === id
-          ? {
-              ...it,
-              ...patch,
-              updated_by: CURRENT_USER_ID,
-              updated_at: nowIso(),
-            }
-          : it
-      )
-    );
-  }, []);
+  const updateItem = useCallback(
+    (id: string, patch: Partial<InventoryItem>) => {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id
+            ? {
+                ...it,
+                ...patch,
+                updated_by: currentUser.id,
+                updated_at: nowIso(),
+              }
+            : it
+        )
+      );
+    },
+    [currentUser.id]
+  );
 
   const retireItem = useCallback(
     (id: string) => {
@@ -249,7 +265,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         item_id: input.item_id,
         description: input.description,
         date_reported: input.date_reported,
-        reported_by: CURRENT_USER_ID,
+        reported_by: currentUser.id,
         severity: input.severity,
         status: "Open",
         repair_start_date: null,
@@ -262,7 +278,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             id: nextId("ev"),
             status: "Open",
             timestamp: ts,
-            user: CURRENT_USER,
+            user: currentUser.full_name,
           },
         ],
       };
@@ -282,9 +298,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           input.description.length > 60 ? "…" : ""
         }`
       );
+
+      // Not awaited: the defect is already recorded, and mail failure must not
+      // surface as a failed log. See app/actions/notifications.ts.
+      void notifyDefectLogged({
+        actorId: currentUser.id,
+        actorName: currentUser.full_name,
+        itemName: item?.item_name ?? "Item",
+        severity: input.severity,
+        description: input.description,
+        dateReported: input.date_reported,
+      });
+
       return defect;
     },
-    [items, pushActivity]
+    [currentUser.full_name, currentUser.id, items, pushActivity]
   );
 
   const appendHistory = useCallback(
@@ -301,7 +329,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                     id: nextId("ev"),
                     status,
                     timestamp: nowIso(),
-                    user: CURRENT_USER,
+                    user: currentUser.full_name,
                     note,
                   },
                 ],
@@ -310,7 +338,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         )
       );
     },
-    []
+    [currentUser.full_name]
   );
 
   const startRepair = useCallback(
@@ -383,9 +411,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           item?.item_name ?? "Item",
           "Defect marked Resolved — item returned to Available."
         );
+
+        void notifyDefectClosed({
+          actorId: currentUser.id,
+          actorName: currentUser.full_name,
+          itemName: item?.item_name ?? "Item",
+          outcome: "Resolved",
+          resolutionNotes: resolution_notes,
+          itemStatus: "Available",
+        });
       }
     },
-    [appendHistory, defects, items, pushActivity]
+    [
+      appendHistory,
+      currentUser.full_name,
+      currentUser.id,
+      defects,
+      items,
+      pushActivity,
+    ]
   );
 
   const markNotRepairable = useCallback(
@@ -424,16 +468,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           )
         );
         const item = items.find((it) => it.id === defect.item_id);
+        const nextStatus =
+          followUp.action === "retire" ? "Retired" : followUp.status;
         pushActivity(
           "Repair Status Change",
           item?.item_name ?? "Item",
-          `Defect marked Not Repairable — item set to ${
-            followUp.action === "retire" ? "Retired" : followUp.status
-          }.`
+          `Defect marked Not Repairable — item set to ${nextStatus}.`
         );
+
+        void notifyDefectClosed({
+          actorId: currentUser.id,
+          actorName: currentUser.full_name,
+          itemName: item?.item_name ?? "Item",
+          outcome: "Not Repairable",
+          resolutionNotes: resolution_notes,
+          itemStatus: nextStatus,
+        });
       }
     },
-    [appendHistory, defects, items, pushActivity]
+    [
+      appendHistory,
+      currentUser.full_name,
+      currentUser.id,
+      defects,
+      items,
+      pushActivity,
+    ]
   );
 
   const getItem = useCallback(
@@ -568,15 +628,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [unitUsage, pushActivity]
   );
 
-  const resetUserPassword = useCallback(
-    (name: string) => {
-      pushActivity("Settings", name, "Password reset link issued.");
+  // Audit-trail entry only. The email itself is sent by the server actions in
+  // app/actions/auth.ts; this records that it happened.
+  const logAccessEmail = useCallback(
+    (name: string, kind: "invite" | "sign-in") => {
+      pushActivity(
+        "Settings",
+        name,
+        kind === "invite" ? "Invite sent." : "Sign-in link sent."
+      );
     },
     [pushActivity]
   );
 
   const value = useMemo<StoreValue>(
     () => ({
+      currentUser,
       items,
       defects,
       activity,
@@ -608,9 +675,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addUnit,
       renameUnit,
       deleteUnit,
-      resetUserPassword,
+      logAccessEmail,
     }),
     [
+      currentUser,
       items,
       defects,
       activity,
@@ -642,7 +710,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addUnit,
       renameUnit,
       deleteUnit,
-      resetUserPassword,
+      logAccessEmail,
     ]
   );
 

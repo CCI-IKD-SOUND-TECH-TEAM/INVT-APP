@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ComponentProps, type ComponentType, type SVGProps } from "react";
 import { useStore, todayIso } from "@/lib/store";
+import { isLowStock } from "@/lib/inventory";
 import type { AuditEntry, Defect, DefectSeverity, InventoryItem } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import SeverityLabel from "@/components/SeverityLabel";
@@ -225,12 +226,7 @@ const REPORTS: ReportDef[] = [
         { key: "category", label: "Category" },
       ],
       rows: data.items
-        .filter(
-          (it) =>
-            it.status !== "Retired" &&
-            typeof it.minimum_stock_threshold === "number" &&
-            it.quantity <= it.minimum_stock_threshold
-        )
+        .filter((it) => it.status !== "Retired" && isLowStock(it))
         .filter(
           (it) =>
             f.category === "all" || data.categoryName(it.category_id) === f.category

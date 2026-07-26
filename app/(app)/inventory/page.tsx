@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { useStore, type NewItemInput } from "@/lib/store";
+import { isLowStock } from "@/lib/inventory";
 import type { InventoryItem, ItemStatus } from "@/lib/types";
 import { categoryIcon } from "@/lib/category-icons";
 import { itemImage } from "@/lib/category-images";
@@ -62,9 +63,7 @@ function InventoryCard({
   onRetire: () => void;
   onReactivate: () => void;
 }) {
-  const isLowStock =
-    typeof item.minimum_stock_threshold === "number" &&
-    item.quantity <= item.minimum_stock_threshold;
+  const lowStock = isLowStock(item);
   const hasRealPhoto = item.images.length > 0;
 
   return (
@@ -94,7 +93,7 @@ function InventoryCard({
           <span className="text-xs text-ink-faint">{categoryLabel}</span>
         </div>
 
-        {isLowStock && (
+        {lowStock && (
           <span className="inline-flex w-fit items-center gap-1 text-xs font-bold text-status-caution">
             <ExclamationTriangleIcon className="size-[11px]" /> Low stock
           </span>
@@ -215,12 +214,7 @@ function InventoryContent() {
       list = list.filter((i) => statusFilter.has(i.status));
     if (categoryFilter.size > 0)
       list = list.filter((i) => categoryFilter.has(categoryName(i.category_id)));
-    if (lowStockOnly)
-      list = list.filter(
-        (i) =>
-          typeof i.minimum_stock_threshold === "number" &&
-          i.quantity <= i.minimum_stock_threshold
-      );
+    if (lowStockOnly) list = list.filter(isLowStock);
     if (search.trim())
       list = list.filter((i) =>
         i.item_name.toLowerCase().includes(search.trim().toLowerCase())
@@ -444,9 +438,7 @@ function InventoryContent() {
             </TableHeader>
             <TableBody>
               {pageItems.map((item) => {
-                const isLowStock =
-                  typeof item.minimum_stock_threshold === "number" &&
-                  item.quantity <= item.minimum_stock_threshold;
+                const lowStock = isLowStock(item);
                 const catLabel = categoryName(item.category_id);
                 const Icon = categoryIcon(catLabel);
                 return (
@@ -463,7 +455,7 @@ function InventoryContent() {
                           <strong className="max-w-60 truncate text-[0.875rem] font-bold">
                             {item.item_name}
                           </strong>
-                          {isLowStock && (
+                          {lowStock && (
                             <span className="inline-flex items-center gap-1 text-xs font-bold text-status-caution">
                               <ExclamationTriangleIcon className="size-[11px]" /> Low stock
                             </span>
