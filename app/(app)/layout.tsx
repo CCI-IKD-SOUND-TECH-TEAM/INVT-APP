@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { StoreProvider } from "@/lib/store";
+import { getStoreData } from "@/lib/data/inventory";
 import { createClient } from "@/utils/supabase/server";
 import type { SessionUser } from "@/lib/types";
 
@@ -35,8 +36,10 @@ export default async function AppGroupLayout({
     email: profile?.email ?? user.email ?? "",
   };
 
+  const seed = await getStoreData();
+
   return (
-    <StoreProvider currentUser={currentUser}>
+    <StoreProvider currentUser={currentUser} seed={seed}>
       <AppShell>{children}</AppShell>
     </StoreProvider>
   );

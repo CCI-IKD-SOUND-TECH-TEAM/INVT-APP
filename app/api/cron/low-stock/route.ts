@@ -11,11 +11,9 @@ import LowStockEmail, {
  * Daily low-stock digest — PRODUCT.md: "flag low stock before it becomes a
  * Sunday-morning problem." Scheduled from vercel.json.
  *
- * DORMANT UNTIL INVENTORY IS IN THE DATABASE. Inventory currently lives in
- * React state (lib/store.tsx + lib/mock-data.ts), which a server cron cannot
- * reach. This queries `inventory_items`; that table doesn't exist yet, so the
- * route returns `skipped` rather than erroring. It starts working the moment
- * the inventory migration lands — no changes needed here.
+ * Live since the inventory migration (supabase/migrations/0002_inventory.sql).
+ * The missing-table guard below is kept as a defensive fallback for
+ * environments where the migration hasn't been applied yet.
  *
  * Runs with the service-role client: cron has no user session, so there is no
  * RLS context to read under.

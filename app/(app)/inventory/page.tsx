@@ -157,6 +157,7 @@ const PAGE_SIZE = 25;
 
 const TEMPLATE_HEADERS = [
   "Item Name",
+  "Serial Number",
   "Description",
   "Category",
   "Quantity",
@@ -179,11 +180,20 @@ export default function InventoryPage() {
 
 function InventoryContent() {
   const searchParams = useSearchParams();
-  const { items, retireItem, reactivateItem, addItem, categories, categoryName } =
-    useStore();
+  const {
+    items,
+    retireItem,
+    reactivateItem,
+    addItem,
+    categories,
+    categoryName,
+    departments,
+    departmentName,
+  } = useStore();
 
   const initialStatus = searchParams.get("status");
   const initialCategory = searchParams.get("category");
+  const initialDepartment = searchParams.get("department");
   const initialLowStock = searchParams.get("lowStock") === "1";
   const highlightId = searchParams.get("highlight");
 
@@ -193,6 +203,9 @@ function InventoryContent() {
   );
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(
     () => new Set(initialCategory ? [initialCategory] : [])
+  );
+  const [departmentFilter, setDepartmentFilter] = useState<Set<string>>(
+    () => new Set(initialDepartment ? [initialDepartment] : [])
   );
   const [includeRetired, setIncludeRetired] = useState(false);
   const [lowStockOnly, setLowStockOnly] = useState(initialLowStock);
@@ -205,7 +218,10 @@ function InventoryContent() {
   const [retireTarget, setRetireTarget] = useState<InventoryItem | null>(null);
 
   const activeFilterCount =
-    statusFilter.size + categoryFilter.size + (lowStockOnly ? 1 : 0);
+    statusFilter.size +
+    categoryFilter.size +
+    departmentFilter.size +
+    (lowStockOnly ? 1 : 0);
 
   const filtered = useMemo(() => {
     let list = items;
@@ -214,6 +230,10 @@ function InventoryContent() {
       list = list.filter((i) => statusFilter.has(i.status));
     if (categoryFilter.size > 0)
       list = list.filter((i) => categoryFilter.has(categoryName(i.category_id)));
+    if (departmentFilter.size > 0)
+      list = list.filter((i) =>
+        departmentFilter.has(departmentName(i.department_id))
+      );
     if (lowStockOnly) list = list.filter(isLowStock);
     if (search.trim())
       list = list.filter((i) =>
@@ -243,7 +263,7 @@ function InventoryContent() {
           return 0;
       }
     });
-  }, [items, includeRetired, statusFilter, categoryFilter, lowStockOnly, search, sortKey, sortDir, categoryName]);
+  }, [items, includeRetired, statusFilter, categoryFilter, departmentFilter, lowStockOnly, search, sortKey, sortDir, categoryName, departmentName]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const clampedPage = Math.min(page, totalPages);
@@ -274,6 +294,7 @@ function InventoryContent() {
     setSearch("");
     setStatusFilter(new Set());
     setCategoryFilter(new Set());
+    setDepartmentFilter(new Set());
     setLowStockOnly(false);
     setIncludeRetired(false);
     setPage(1);
@@ -383,6 +404,18 @@ function InventoryContent() {
                   onCheckedChange={() => toggleSetValue(categoryFilter, setCategoryFilter, cat)}
                 />
                 {cat}
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="h-label">Department</span>
+            {departments.map((dept) => (
+              <label key={dept} className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted-foreground">
+                <Checkbox
+                  checked={departmentFilter.has(dept)}
+                  onCheckedChange={() => toggleSetValue(departmentFilter, setDepartmentFilter, dept)}
+                />
+                {dept}
               </label>
             ))}
           </div>
@@ -639,7 +672,9 @@ function InventoryContent() {
         <BulkImportModal
           onClose={() => setBulkOpen(false)}
           onDownloadTemplate={downloadTemplate}
-          onImport={(rows) => rows.forEach((r) => addItem(r))}
+          onImport={async (rows) => {
+            for (const r of rows) await addItem(r);
+          }}
         />
       )}
     </div>
@@ -724,6 +759,7 @@ function BulkImportModal({
           : null,
         location: record["Location"] || null,
         date_acquired: record["Date Acquired"] || null,
+        serial_number: record["Serial Number"] || null,
         images: [],
         remarks: record["Remarks"] || null,
       });

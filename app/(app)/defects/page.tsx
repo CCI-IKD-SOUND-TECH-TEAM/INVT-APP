@@ -352,7 +352,7 @@ function LogDefectModal({
   const [dateReported, setDateReported] = useState(TODAY);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const next: Record<string, string> = {};
     if (!itemId) next.itemId = "Select which item this defect affects.";
@@ -365,7 +365,7 @@ function LogDefectModal({
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
-    logDefect({
+    await logDefect({
       item_id: itemId,
       description: description.trim(),
       severity: severity as DefectSeverity,
@@ -474,14 +474,14 @@ function StartRepairModal({
   const [party, setParty] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const next: Record<string, string> = {};
     if (!date) next.date = "Repair Start Date is required.";
     if (!party.trim()) next.party = "Performing Party is required.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
-    startRepair(defect.id, date, party.trim());
+    await startRepair(defect.id, date, party.trim());
     onClose();
   }
 
@@ -539,13 +539,13 @@ function ResolveModal({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!notes.trim()) {
       setError("Resolution Notes are required to mark a defect Resolved.");
       return;
     }
-    resolveDefect(defect.id, notes.trim());
+    await resolveDefect(defect.id, notes.trim());
     onClose();
   }
 
@@ -607,9 +607,9 @@ function NotRepairableModal({
     setStep(2);
   }
 
-  function submitFollowUp(e: React.FormEvent) {
+  async function submitFollowUp(e: React.FormEvent) {
     e.preventDefault();
-    markNotRepairable(
+    await markNotRepairable(
       defect.id,
       notes.trim(),
       followUp === "retire" ? { action: "retire" } : { action: "set-status", status: newStatus }

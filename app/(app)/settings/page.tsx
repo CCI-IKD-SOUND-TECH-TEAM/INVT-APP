@@ -114,9 +114,9 @@ function TaxonomyManager({
   noun: string;
   terms: string[];
   usage: (name: string) => number;
-  add: (name: string) => MutationResult;
-  rename: (from: string, to: string) => MutationResult;
-  remove: (name: string) => MutationResult;
+  add: (name: string) => Promise<MutationResult>;
+  rename: (from: string, to: string) => Promise<MutationResult>;
+  remove: (name: string) => Promise<MutationResult>;
   onToast: (message: string, tone?: "good" | "bad") => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -129,9 +129,9 @@ function TaxonomyManager({
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
-  function submitAdd(e: React.FormEvent) {
+  async function submitAdd(e: React.FormEvent) {
     e.preventDefault();
-    const res = add(addDraft);
+    const res = await add(addDraft);
     if ("error" in res) {
       setAddError(res.error);
     } else {
@@ -148,10 +148,10 @@ function TaxonomyManager({
     setEditError("");
   }
 
-  function submitEdit(e: React.FormEvent) {
+  async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingTerm) return;
-    const res = rename(editingTerm, editDraft);
+    const res = await rename(editingTerm, editDraft);
     if ("error" in res) {
       setEditError(res.error);
     } else {
@@ -366,8 +366,8 @@ function TaxonomyManager({
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => {
-                    const res = remove(deleteTarget);
+                  onClick={async () => {
+                    const res = await remove(deleteTarget);
                     if ("error" in res) onToast(res.error, "bad");
                     else onToast(`${noun} "${deleteTarget}" deleted.`);
                     setDeleteTarget(null);

@@ -8,74 +8,86 @@ import {
   useState,
 } from "react";
 import {
-  INITIAL_ACTIVITY,
-  INITIAL_CATEGORIES,
-  INITIAL_DEFECTS,
-  INITIAL_DEPARTMENTS,
-  INITIAL_ITEMS,
-  INITIAL_PROFILES,
-  UNITS_OF_MEASURE,
-} from "./mock-data";
+  createItem as createItemAction,
+  reactivateItem as reactivateItemAction,
+  retireItem as retireItemAction,
+  updateItem as updateItemAction,
+} from "@/app/actions/items";
 import {
-  notifyDefectClosed,
-  notifyDefectLogged,
-} from "@/app/actions/notifications";
+  logDefect as logDefectAction,
+  markNotRepairable as markNotRepairableAction,
+  resolveDefect as resolveDefectAction,
+  startRepair as startRepairAction,
+} from "@/app/actions/defects";
+import {
+  addCategory as addCategoryAction,
+  addUnit as addUnitAction,
+  deleteCategory as deleteCategoryAction,
+  deleteUnit as deleteUnitAction,
+  renameCategory as renameCategoryAction,
+  renameUnit as renameUnitAction,
+} from "@/app/actions/taxonomy";
+import { logAccessEmail as logAccessEmailAction } from "@/app/actions/audit";
 import type {
-  AuditActionType,
+  AuditEntry,
   Category,
   Defect,
-  DefectStatus,
   Department,
   InventoryItem,
+  NewItemInput,
   Profile,
   SessionUser,
 } from "./types";
 
+export type { NewItemInput } from "./types";
+
 export type MutationResult = { ok: true } | { ok: false; error: string };
-
-export type NewItemInput = Omit<
-  InventoryItem,
-  "id" | "status" | "created_by" | "updated_by" | "created_at" | "updated_at"
->;
-
-function nowIso() {
-  return new Date().toISOString();
-}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Everything the (app) layout server-fetches and hands the store to seed from. */
+export interface StoreSeed {
+  items: InventoryItem[];
+  defects: Defect[];
+  activity: AuditEntry[];
+  categories: Category[];
+  departments: Department[];
+  units: string[];
+  profiles: Profile[];
+}
+
 interface StoreValue {
-  /** The signed-in staff member. Stamped onto every audit entry. */
+  /** The signed-in staff member. Stamped onto every audit entry (server-side). */
   currentUser: SessionUser;
   items: InventoryItem[];
   defects: Defect[];
-  activity: typeof INITIAL_ACTIVITY;
+  activity: AuditEntry[];
   profiles: Profile[];
-  addItem: (item: NewItemInput) => InventoryItem;
-  updateItem: (id: string, patch: Partial<InventoryItem>) => void;
-  retireItem: (id: string) => void;
-  reactivateItem: (id: string) => void;
+  addItem: (item: NewItemInput) => Promise<InventoryItem | null>;
+  updateItem: (id: string, patch: Partial<InventoryItem>) => Promise<void>;
+  retireItem: (id: string) => Promise<void>;
+  reactivateItem: (id: string) => Promise<void>;
   logDefect: (input: {
     item_id: string;
     description: string;
     severity: Defect["severity"];
     date_reported: string;
-  }) => Defect;
+  }) => Promise<Defect | null>;
   startRepair: (
     defectId: string,
     repair_start_date: string,
     performing_party: string
-  ) => void;
-  resolveDefect: (defectId: string, resolution_notes: string) => void;
+  ) => Promise<void>;
+  resolveDefect: (defectId: string, resolution_notes: string) => Promise<void>;
   markNotRepairable: (
     defectId: string,
     resolution_notes: string,
     followUp:
       | { action: "retire" }
       | { action: "set-status"; status: InventoryItem["status"] }
-  ) => void;
+  ) => Promise<void>;
   getItem: (id: string) => InventoryItem | undefined;
   getDefectsForItem: (id: string) => Defect[];
 
@@ -91,39 +103,39 @@ interface StoreValue {
   users: string[];
   categoryUsage: (name: string) => number;
   unitUsage: (name: string) => number;
-  addCategory: (name: string) => MutationResult;
-  renameCategory: (from: string, to: string) => MutationResult;
-  deleteCategory: (name: string) => MutationResult;
-  addUnit: (name: string) => MutationResult;
-  renameUnit: (from: string, to: string) => MutationResult;
-  deleteUnit: (name: string) => MutationResult;
-  logAccessEmail: (name: string, kind: "invite" | "sign-in") => void;
+  addCategory: (name: string) => Promise<MutationResult>;
+  renameCategory: (from: string, to: string) => Promise<MutationResult>;
+  deleteCategory: (name: string) => Promise<MutationResult>;
+  addUnit: (name: string) => Promise<MutationResult>;
+  renameUnit: (from: string, to: string) => Promise<MutationResult>;
+  deleteUnit: (name: string) => Promise<MutationResult>;
+  logAccessEmail: (name: string, kind: "invite" | "sign-in") => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-let idCounter = 1000;
-function nextId(prefix: string) {
-  idCounter += 1;
-  return `${prefix}-${idCounter}`;
-}
-
 export function StoreProvider({
   currentUser,
+  seed,
   children,
 }: {
   /** Resolved from the Supabase session in app/(app)/layout.tsx. */
   currentUser: SessionUser;
+  /** Server-fetched initial data (lib/data/inventory.ts getStoreData). */
+  seed: StoreSeed;
   children: React.ReactNode;
 }) {
-  const [items, setItems] = useState<InventoryItem[]>(INITIAL_ITEMS);
-  const [defects, setDefects] = useState<Defect[]>(INITIAL_DEFECTS);
-  const [activity, setActivity] = useState(INITIAL_ACTIVITY);
-  const [categoryList, setCategoryList] =
-    useState<Category[]>(INITIAL_CATEGORIES);
-  const [departmentList] = useState<Department[]>(INITIAL_DEPARTMENTS);
-  const [profileList] = useState<Profile[]>(INITIAL_PROFILES);
-  const [units, setUnits] = useState<string[]>(() => [...UNITS_OF_MEASURE]);
+  const [items, setItems] = useState<InventoryItem[]>(seed.items);
+  const [defects, setDefects] = useState<Defect[]>(seed.defects);
+  const [activity, setActivity] = useState<AuditEntry[]>(seed.activity);
+  const [categoryList, setCategoryList] = useState<Category[]>(seed.categories);
+  const [departmentList] = useState<Department[]>(seed.departments);
+  const [profileList] = useState<Profile[]>(seed.profiles);
+  const [units, setUnits] = useState<string[]>(seed.units);
+
+  const prependActivity = useCallback((entry?: AuditEntry) => {
+    if (entry) setActivity((prev) => [entry, ...prev]);
+  }, []);
 
   const categoryName = useCallback(
     (id: string) => categoryList.find((c) => c.id === id)?.name ?? "—",
@@ -148,9 +160,7 @@ export function StoreProvider({
 
   const categories = useMemo(
     () =>
-      [...categoryList]
-        .map((c) => c.name)
-        .sort((a, b) => a.localeCompare(b)),
+      [...categoryList].map((c) => c.name).sort((a, b) => a.localeCompare(b)),
     [categoryList]
   );
   const departments = useMemo(
@@ -162,338 +172,145 @@ export function StoreProvider({
     [profileList]
   );
 
-  const pushActivity = useCallback(
-    (actionType: AuditActionType, recordLabel: string, detail: string) => {
-      setActivity((prev) => [
-        {
-          id: nextId("act"),
-          timestamp: nowIso(),
-          user: currentUser.full_name,
-          actionType,
-          recordLabel,
-          detail,
-        },
-        ...prev,
-      ]);
-    },
-    [currentUser.full_name]
-  );
-
   const addItem = useCallback(
-    (input: NewItemInput) => {
-      const ts = nowIso();
-      const item: InventoryItem = {
-        ...input,
-        id: nextId("itm"),
-        status: "Available",
-        created_by: currentUser.id,
-        updated_by: currentUser.id,
-        created_at: ts,
-        updated_at: ts,
-      };
-      setItems((prev) => [item, ...prev]);
-      pushActivity("Create", item.item_name, "Added new item to inventory.");
-      return item;
+    async (input: NewItemInput) => {
+      const res = await createItemAction(input);
+      if ("error" in res) {
+        console.error("[store] addItem", res.error);
+        return null;
+      }
+      setItems((prev) => [res.item, ...prev]);
+      prependActivity(res.activity);
+      return res.item;
     },
-    [currentUser.id, pushActivity]
+    [prependActivity]
   );
 
   const updateItem = useCallback(
-    (id: string, patch: Partial<InventoryItem>) => {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? {
-                ...it,
-                ...patch,
-                updated_by: currentUser.id,
-                updated_at: nowIso(),
-              }
-            : it
-        )
-      );
+    async (id: string, patch: Partial<InventoryItem>) => {
+      const res = await updateItemAction(id, patch);
+      if ("error" in res) {
+        console.error("[store] updateItem", res.error);
+        return;
+      }
+      setItems((prev) => prev.map((it) => (it.id === id ? res.item : it)));
+      prependActivity(res.activity);
     },
-    [currentUser.id]
+    [prependActivity]
   );
 
   const retireItem = useCallback(
-    (id: string) => {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? { ...it, status: "Retired", updated_at: nowIso() }
-            : it
-        )
-      );
-      const item = items.find((it) => it.id === id);
-      if (item)
-        pushActivity("Retire", item.item_name, "Item retired (soft-deleted).");
+    async (id: string) => {
+      const res = await retireItemAction(id);
+      if ("error" in res) {
+        console.error("[store] retireItem", res.error);
+        return;
+      }
+      setItems((prev) => prev.map((it) => (it.id === id ? res.item : it)));
+      prependActivity(res.activity);
     },
-    [items, pushActivity]
+    [prependActivity]
   );
 
   const reactivateItem = useCallback(
-    (id: string) => {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? { ...it, status: "Available", updated_at: nowIso() }
-            : it
-        )
-      );
-      const item = items.find((it) => it.id === id);
-      if (item)
-        pushActivity(
-          "Reactivate",
-          item.item_name,
-          "Item reactivated — status set to Available."
-        );
+    async (id: string) => {
+      const res = await reactivateItemAction(id);
+      if ("error" in res) {
+        console.error("[store] reactivateItem", res.error);
+        return;
+      }
+      setItems((prev) => prev.map((it) => (it.id === id ? res.item : it)));
+      prependActivity(res.activity);
     },
-    [items, pushActivity]
+    [prependActivity]
+  );
+
+  const applyDefectResult = useCallback(
+    (res: { defect: Defect; item: InventoryItem; activity: AuditEntry }) => {
+      setDefects((prev) => {
+        const exists = prev.some((d) => d.id === res.defect.id);
+        return exists
+          ? prev.map((d) => (d.id === res.defect.id ? res.defect : d))
+          : [res.defect, ...prev];
+      });
+      setItems((prev) =>
+        prev.map((it) => (it.id === res.item.id ? res.item : it))
+      );
+      prependActivity(res.activity);
+    },
+    [prependActivity]
   );
 
   const logDefect = useCallback(
-    (input: {
+    async (input: {
       item_id: string;
       description: string;
       severity: Defect["severity"];
       date_reported: string;
     }) => {
-      const ts = nowIso();
-      const defect: Defect = {
-        id: nextId("def"),
-        item_id: input.item_id,
-        description: input.description,
-        date_reported: input.date_reported,
-        reported_by: currentUser.id,
-        severity: input.severity,
-        status: "Open",
-        repair_start_date: null,
-        performing_party: null,
-        resolution_notes: null,
-        created_at: ts,
-        updated_at: ts,
-        history: [
-          {
-            id: nextId("ev"),
-            status: "Open",
-            timestamp: ts,
-            user: currentUser.full_name,
-          },
-        ],
-      };
-      setDefects((prev) => [defect, ...prev]);
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === input.item_id
-            ? { ...it, status: "Defective", updated_at: ts }
-            : it
-        )
-      );
-      const item = items.find((it) => it.id === input.item_id);
-      pushActivity(
-        "Defect",
-        item?.item_name ?? "Item",
-        `Logged defect — ${input.description.slice(0, 60)}${
-          input.description.length > 60 ? "…" : ""
-        }`
-      );
-
-      // Not awaited: the defect is already recorded, and mail failure must not
-      // surface as a failed log. See app/actions/notifications.ts.
-      void notifyDefectLogged({
-        actorId: currentUser.id,
-        actorName: currentUser.full_name,
-        itemName: item?.item_name ?? "Item",
-        severity: input.severity,
-        description: input.description,
-        dateReported: input.date_reported,
-      });
-
-      return defect;
+      const res = await logDefectAction(input);
+      if ("error" in res) {
+        console.error("[store] logDefect", res.error);
+        return null;
+      }
+      applyDefectResult(res);
+      return res.defect;
     },
-    [currentUser.full_name, currentUser.id, items, pushActivity]
-  );
-
-  const appendHistory = useCallback(
-    (defectId: string, status: DefectStatus, note?: string) => {
-      setDefects((prev) =>
-        prev.map((d) =>
-          d.id === defectId
-            ? {
-                ...d,
-                updated_at: nowIso(),
-                history: [
-                  ...d.history,
-                  {
-                    id: nextId("ev"),
-                    status,
-                    timestamp: nowIso(),
-                    user: currentUser.full_name,
-                    note,
-                  },
-                ],
-              }
-            : d
-        )
-      );
-    },
-    [currentUser.full_name]
+    [applyDefectResult]
   );
 
   const startRepair = useCallback(
-    (defectId: string, repair_start_date: string, performing_party: string) => {
-      setDefects((prev) =>
-        prev.map((d) =>
-          d.id === defectId
-            ? {
-                ...d,
-                status: "Under Repair",
-                repair_start_date,
-                performing_party,
-                updated_at: nowIso(),
-              }
-            : d
-        )
-      );
-      appendHistory(
+    async (
+      defectId: string,
+      repair_start_date: string,
+      performing_party: string
+    ) => {
+      const res = await startRepairAction(
         defectId,
-        "Under Repair",
-        `Repair started with ${performing_party || "unspecified party"}.`
+        repair_start_date,
+        performing_party
       );
-      const defect = defects.find((d) => d.id === defectId);
-      if (defect) {
-        setItems((prev) =>
-          prev.map((it) =>
-            it.id === defect.item_id
-              ? { ...it, status: "Under Repair", updated_at: nowIso() }
-              : it
-          )
-        );
-        const item = items.find((it) => it.id === defect.item_id);
-        pushActivity(
-          "Repair Status Change",
-          item?.item_name ?? "Item",
-          `Defect moved to Under Repair — ${performing_party || "unspecified party"}.`
-        );
+      if ("error" in res) {
+        console.error("[store] startRepair", res.error);
+        return;
       }
+      applyDefectResult(res);
     },
-    [appendHistory, defects, items, pushActivity]
+    [applyDefectResult]
   );
 
   const resolveDefect = useCallback(
-    (defectId: string, resolution_notes: string) => {
-      setDefects((prev) =>
-        prev.map((d) =>
-          d.id === defectId
-            ? {
-                ...d,
-                status: "Resolved",
-                resolution_notes,
-                updated_at: nowIso(),
-              }
-            : d
-        )
-      );
-      appendHistory(defectId, "Resolved", resolution_notes);
-      const defect = defects.find((d) => d.id === defectId);
-      if (defect) {
-        setItems((prev) =>
-          prev.map((it) =>
-            it.id === defect.item_id
-              ? { ...it, status: "Available", updated_at: nowIso() }
-              : it
-          )
-        );
-        const item = items.find((it) => it.id === defect.item_id);
-        pushActivity(
-          "Repair Status Change",
-          item?.item_name ?? "Item",
-          "Defect marked Resolved — item returned to Available."
-        );
-
-        void notifyDefectClosed({
-          actorId: currentUser.id,
-          actorName: currentUser.full_name,
-          itemName: item?.item_name ?? "Item",
-          outcome: "Resolved",
-          resolutionNotes: resolution_notes,
-          itemStatus: "Available",
-        });
+    async (defectId: string, resolution_notes: string) => {
+      const res = await resolveDefectAction(defectId, resolution_notes);
+      if ("error" in res) {
+        console.error("[store] resolveDefect", res.error);
+        return;
       }
+      applyDefectResult(res);
     },
-    [
-      appendHistory,
-      currentUser.full_name,
-      currentUser.id,
-      defects,
-      items,
-      pushActivity,
-    ]
+    [applyDefectResult]
   );
 
   const markNotRepairable = useCallback(
-    (
+    async (
       defectId: string,
       resolution_notes: string,
       followUp:
         | { action: "retire" }
         | { action: "set-status"; status: InventoryItem["status"] }
     ) => {
-      setDefects((prev) =>
-        prev.map((d) =>
-          d.id === defectId
-            ? {
-                ...d,
-                status: "Not Repairable",
-                resolution_notes,
-                updated_at: nowIso(),
-              }
-            : d
-        )
+      const res = await markNotRepairableAction(
+        defectId,
+        resolution_notes,
+        followUp
       );
-      appendHistory(defectId, "Not Repairable", resolution_notes);
-      const defect = defects.find((d) => d.id === defectId);
-      if (defect) {
-        setItems((prev) =>
-          prev.map((it) =>
-            it.id === defect.item_id
-              ? {
-                  ...it,
-                  status:
-                    followUp.action === "retire" ? "Retired" : followUp.status,
-                  updated_at: nowIso(),
-                }
-              : it
-          )
-        );
-        const item = items.find((it) => it.id === defect.item_id);
-        const nextStatus =
-          followUp.action === "retire" ? "Retired" : followUp.status;
-        pushActivity(
-          "Repair Status Change",
-          item?.item_name ?? "Item",
-          `Defect marked Not Repairable — item set to ${nextStatus}.`
-        );
-
-        void notifyDefectClosed({
-          actorId: currentUser.id,
-          actorName: currentUser.full_name,
-          itemName: item?.item_name ?? "Item",
-          outcome: "Not Repairable",
-          resolutionNotes: resolution_notes,
-          itemStatus: nextStatus,
-        });
+      if ("error" in res) {
+        console.error("[store] markNotRepairable", res.error);
+        return;
       }
+      applyDefectResult(res);
     },
-    [
-      appendHistory,
-      currentUser.full_name,
-      currentUser.id,
-      defects,
-      items,
-      pushActivity,
-    ]
+    [applyDefectResult]
   );
 
   const getItem = useCallback(
@@ -519,126 +336,96 @@ export function StoreProvider({
   );
 
   const addCategory = useCallback(
-    (value: string): MutationResult => {
-      const name = value.trim();
-      if (!name) return { ok: false, error: "Category name can't be empty." };
-      if (name.length > 40)
-        return {
-          ok: false,
-          error: "Category name must be 40 characters or fewer.",
-        };
-      if (categoryList.some((c) => c.name.toLowerCase() === name.toLowerCase()))
-        return { ok: false, error: `"${name}" already exists.` };
-      setCategoryList((prev) => [
-        ...prev,
-        { id: nextId("cat"), name, created_at: nowIso() },
-      ]);
-      pushActivity("Settings", name, "Added category.");
+    async (value: string): Promise<MutationResult> => {
+      const res = await addCategoryAction(value);
+      if ("error" in res) return { ok: false, error: res.error };
+      setCategoryList((prev) => [...prev, res.category]);
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [categoryList, pushActivity]
+    [prependActivity]
   );
 
   const renameCategory = useCallback(
-    (from: string, to: string): MutationResult => {
-      const name = to.trim();
-      if (!name) return { ok: false, error: "Category name can't be empty." };
-      if (name === from) return { ok: true };
-      if (name.length > 40)
-        return {
-          ok: false,
-          error: "Category name must be 40 characters or fewer.",
-        };
-      if (categoryList.some((c) => c.name.toLowerCase() === name.toLowerCase()))
-        return { ok: false, error: `"${name}" already exists.` };
+    async (from: string, to: string): Promise<MutationResult> => {
+      if (to.trim() === from) return { ok: true };
+      const res = await renameCategoryAction(from, to);
+      if ("error" in res) return { ok: false, error: res.error };
       setCategoryList((prev) =>
-        prev.map((c) => (c.name === from ? { ...c, name } : c))
+        prev.map((c) => (c.id === res.category.id ? res.category : c))
       );
-      pushActivity("Settings", name, `Renamed category from "${from}".`);
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [categoryList, pushActivity]
+    [prependActivity]
   );
 
   const deleteCategory = useCallback(
-    (name: string): MutationResult => {
-      const used = categoryUsage(name);
-      if (used > 0)
-        return {
-          ok: false,
-          error: `"${name}" is used by ${used} item${used === 1 ? "" : "s"}. Reassign or rename them first.`,
-        };
+    async (name: string): Promise<MutationResult> => {
+      const res = await deleteCategoryAction(name);
+      if ("error" in res) return { ok: false, error: res.error };
       setCategoryList((prev) => prev.filter((c) => c.name !== name));
-      pushActivity("Settings", name, "Deleted category.");
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [categoryUsage, pushActivity]
+    [prependActivity]
   );
 
   const addUnit = useCallback(
-    (value: string): MutationResult => {
-      const name = value.trim();
-      if (!name) return { ok: false, error: "Unit name can't be empty." };
-      if (name.length > 40)
-        return { ok: false, error: "Unit name must be 40 characters or fewer." };
-      if (units.some((u) => u.toLowerCase() === name.toLowerCase()))
-        return { ok: false, error: `"${name}" already exists.` };
-      setUnits((prev) => [...prev, name].sort((a, b) => a.localeCompare(b)));
-      pushActivity("Settings", name, "Added unit.");
+    async (value: string): Promise<MutationResult> => {
+      const res = await addUnitAction(value);
+      if ("error" in res) return { ok: false, error: res.error };
+      setUnits((prev) =>
+        [...prev, res.name].sort((a, b) => a.localeCompare(b))
+      );
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [units, pushActivity]
+    [prependActivity]
   );
 
   const renameUnit = useCallback(
-    (from: string, to: string): MutationResult => {
-      const name = to.trim();
-      if (!name) return { ok: false, error: "Unit name can't be empty." };
-      if (name === from) return { ok: true };
-      if (name.length > 40)
-        return { ok: false, error: "Unit name must be 40 characters or fewer." };
-      if (units.some((u) => u.toLowerCase() === name.toLowerCase()))
-        return { ok: false, error: `"${name}" already exists.` };
+    async (from: string, to: string): Promise<MutationResult> => {
+      if (to.trim() === from) return { ok: true };
+      const res = await renameUnitAction(from, to);
+      if ("error" in res) return { ok: false, error: res.error };
       setUnits((prev) =>
-        prev.map((u) => (u === from ? name : u)).sort((a, b) => a.localeCompare(b))
+        prev.map((u) => (u === from ? res.name : u)).sort((a, b) => a.localeCompare(b))
       );
       setItems((prev) =>
         prev.map((it) =>
-          it.unit_of_measure === from ? { ...it, unit_of_measure: name } : it
+          it.unit_of_measure === from
+            ? { ...it, unit_of_measure: res.name }
+            : it
         )
       );
-      pushActivity("Settings", name, `Renamed unit from "${from}".`);
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [units, pushActivity]
+    [prependActivity]
   );
 
   const deleteUnit = useCallback(
-    (name: string): MutationResult => {
-      const used = unitUsage(name);
-      if (used > 0)
-        return {
-          ok: false,
-          error: `"${name}" is used by ${used} item${used === 1 ? "" : "s"}. Reassign or rename them first.`,
-        };
+    async (name: string): Promise<MutationResult> => {
+      const res = await deleteUnitAction(name);
+      if ("error" in res) return { ok: false, error: res.error };
       setUnits((prev) => prev.filter((u) => u !== name));
-      pushActivity("Settings", name, "Deleted unit of measure.");
+      prependActivity(res.activity);
       return { ok: true };
     },
-    [unitUsage, pushActivity]
+    [prependActivity]
   );
 
-  // Audit-trail entry only. The email itself is sent by the server actions in
-  // app/actions/auth.ts; this records that it happened.
   const logAccessEmail = useCallback(
-    (name: string, kind: "invite" | "sign-in") => {
-      pushActivity(
-        "Settings",
-        name,
-        kind === "invite" ? "Invite sent." : "Sign-in link sent."
-      );
+    async (name: string, kind: "invite" | "sign-in") => {
+      const res = await logAccessEmailAction(name, kind);
+      if ("error" in res) {
+        console.error("[store] logAccessEmail", res.error);
+        return;
+      }
+      prependActivity(res.activity);
     },
-    [pushActivity]
+    [prependActivity]
   );
 
   const value = useMemo<StoreValue>(

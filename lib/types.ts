@@ -51,6 +51,7 @@ export interface InventoryItem {
   location?: string | null;
   date_acquired?: string | null;
   remarks?: string | null;
+  serial_number?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;
@@ -61,6 +62,12 @@ export interface InventoryItem {
   unit_of_measure: string;
   asset_type: AssetType;
 }
+
+/** Shape the item form / bulk import hand to `createItem`. */
+export type NewItemInput = Omit<
+  InventoryItem,
+  "id" | "status" | "created_by" | "updated_by" | "created_at" | "updated_at"
+>;
 
 export interface ItemImage {
   id: string;
@@ -120,39 +127,3 @@ export interface SessionUser {
   full_name: string;
   email: string;
 }
-
-/**
- * Seed-data identity only.
- *
- * The signed-in user now comes from the session — see SessionUser above, loaded
- * in app/(app)/layout.tsx and read via `useStore().currentUser`. These constants
- * remain solely so lib/mock-data.ts can stamp created_by/updated_by on the
- * fixture rows the UI still renders; nothing in the running app should read them.
- */
-export const CURRENT_USER = "Tolu Adebayo";
-export const CURRENT_USER_ID = "usr-tolu-adebayo";
-
-export const USERS = [
-  "Tolu Adebayo",
-  "Ngozi Eze",
-  "Chuka Obi",
-  "Feyi Bankole",
-  "Sarah Johnson",
-];
-
-export const DEPARTMENTS: DepartmentName[] = ["Sound", "Light", "Projection"];
-
-export const CATEGORIES = [
-  "Speakers",
-  "Microphones",
-  "Mixing Consoles",
-  "Cabling & Connectors",
-  "Lighting Fixtures",
-  "Lighting Controllers",
-  "Projectors",
-  "Screens & Mounts",
-  "Stands & Rigging",
-  "Power & Batteries",
-];
-
-export const UNITS_OF_MEASURE = ["Piece", "Box", "Set", "Pair", "Roll"];

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { CldUploadWidget } from "next-cloudinary";
 import { useStore, type NewItemInput } from "@/lib/store";
 import type { AssetType, InventoryItem } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
@@ -14,7 +15,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { IconArrowLeft as ArrowLeftIcon, IconCheck as CheckIcon, IconAlertTriangle as ExclamationTriangleIcon, IconPhoto as PhotoIcon, IconX as XMarkIcon } from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
 
 const ASSET_TYPES: AssetType[] = [
   "Equipment",
@@ -27,6 +27,7 @@ const ASSET_TYPES: AssetType[] = [
 // UI-shaped form state, mapped to/from InventoryItem at the itemToForm / submit boundaries.
 interface FormState {
   name: string;
+  serialNumber: string;
   description: string;
   category: string;
   quantity: string;
@@ -42,6 +43,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   name: "",
+  serialNumber: "",
   description: "",
   category: "",
   quantity: "",
@@ -62,6 +64,7 @@ function itemToForm(
 ): FormState {
   return {
     name: item.item_name,
+    serialNumber: item.serial_number ?? "",
     description: item.description ?? "",
     category: categoryName(item.category_id),
     quantity: String(item.quantity),
@@ -133,9 +136,7 @@ function ItemFormContent() {
     {}
   );
   const [showRetire, setShowRetire] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const [saved, setSaved] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasOpenDefect =
     isEdit &&
@@ -184,6 +185,9 @@ function ItemFormContent() {
     if (form.location.length > 100)
       next.location = "Location must be 100 characters or fewer.";
 
+    if (form.serialNumber.length > 100)
+      next.serialNumber = "Serial Number must be 100 characters or fewer.";
+
     if (form.dateAcquired && form.dateAcquired > TODAY)
       next.dateAcquired = "Date Acquired cannot be in the future.";
 
@@ -194,22 +198,16 @@ function ItemFormContent() {
     return Object.keys(next).length === 0;
   }
 
-  function handleFiles(files: FileList | null) {
-    if (!files) return;
-    const room = 5 - form.images.length;
-    if (room <= 0) return;
-    const accepted: string[] = [];
-    Array.from(files)
-      .slice(0, room)
-      .forEach((file) => {
-        if (!["image/jpeg", "image/png"].includes(file.type)) return;
-        if (file.size > 5 * 1024 * 1024) return;
-        accepted.push(URL.createObjectURL(file));
-      });
-    if (accepted.length) set("images", [...form.images, ...accepted]);
+  // Cloudinary fires onSuccess once per uploaded file; use a functional update
+  // so appends don't clobber each other across multiple files in one session.
+  function addImage(url: string) {
+    setForm((f) =>
+      f.images.length >= 5 ? f : { ...f, images: [...f.images, url] }
+    );
+    setErrors((e) => ({ ...e, images: undefined }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
@@ -228,15 +226,18 @@ function ItemFormContent() {
       location: form.location.trim() || null,
       date_acquired: form.dateAcquired || null,
       remarks: form.remarks.trim() || null,
+      serial_number: form.serialNumber.trim() || null,
       images: form.images,
     };
 
     let id: string;
     if (isEdit && editingItem) {
-      updateItem(editingItem.id, payload);
+      await updateItem(editingItem.id, payload);
       id = editingItem.id;
     } else {
-      id = addItem(payload).id;
+      const created = await addItem(payload);
+      if (!created) return;
+      id = created.id;
     }
 
     setSaved(true);
@@ -301,6 +302,23 @@ function ItemFormContent() {
             {errors.description && (
               <span className="field-error">
                 <ExclamationTriangleIcon className="size-[13px]" /> {errors.description}
+              </span>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="serialNumber">Serial Number</Label>
+            <Input
+              id="serialNumber"
+              aria-invalid={Boolean(errors.serialNumber)}
+              value={form.serialNumber}
+              maxLength={100}
+              onChange={(e) => set("serialNumber", e.target.value)}
+              placeholder="Manufacturer serial or asset tag (optional)"
+            />
+            {errors.serialNumber && (
+              <span className="field-error">
+                <ExclamationTriangleIcon className="size-[13px]" /> {errors.serialNumber}
               </span>
             )}
           </div>
@@ -535,37 +553,37 @@ function ItemFormContent() {
           )}
 
           {form.images.length < 5 && (
-            <div
-              className={cn(
-                "flex cursor-pointer flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-6 text-center text-muted-foreground transition-colors duration-150 hover:border-ink-faint",
-                dragActive && "border-brand bg-brand-tint"
-              )}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragActive(true);
+            <CldUploadWidget
+              signatureEndpoint="/api/sign-cloudinary"
+              options={{
+                sources: ["local", "camera", "url"],
+                multiple: true,
+                maxFiles: 5 - form.images.length,
+                clientAllowedFormats: ["jpg", "jpeg", "png"],
+                maxFileSize: 5 * 1024 * 1024,
+                folder: "inventory-items",
               }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragActive(false);
-                handleFiles(e.dataTransfer.files);
+              onSuccess={(result) => {
+                const info = result?.info;
+                if (info && typeof info === "object" && "secure_url" in info) {
+                  addImage((info as { secure_url: string }).secure_url);
+                }
               }}
             >
-              <PhotoIcon className="size-6" />
-              <span>
-                <strong className="text-foreground">Drag and drop</strong> or click
-                to upload — JPG/PNG, up to 5MB each
-              </span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                multiple
-                className="sr-only"
-                onChange={(e) => handleFiles(e.target.files)}
-              />
-            </div>
+              {({ open }) => (
+                <button
+                  type="button"
+                  onClick={() => open()}
+                  className="flex cursor-pointer flex-col items-center gap-2 rounded-md border-[1.5px] border-dashed border-border p-6 text-center text-muted-foreground transition-colors duration-150 hover:border-ink-faint"
+                >
+                  <PhotoIcon className="size-6" />
+                  <span>
+                    <strong className="text-foreground">Click to upload</strong> —
+                    JPG/PNG, up to 5MB each
+                  </span>
+                </button>
+              )}
+            </CldUploadWidget>
           )}
         </Section>
 
@@ -625,8 +643,8 @@ function ItemFormContent() {
             <Button
               type="button"
               variant="destructive"
-              onClick={() => {
-                retireItem(editingItem.id);
+              onClick={async () => {
+                await retireItem(editingItem.id);
                 setShowRetire(false);
                 router.push("/inventory");
               }}
