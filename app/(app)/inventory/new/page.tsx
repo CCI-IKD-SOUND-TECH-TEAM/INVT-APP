@@ -229,7 +229,7 @@ function ItemFormContent() {
     try {
       const signRes = await fetch("/api/sign-cloudinary", { method: "POST" });
       if (!signRes.ok) throw new Error("sign failed");
-      const { signature, timestamp, folder, apiKey, cloudName } =
+      const { signature, timestamp, folder, transformation, apiKey, cloudName } =
         await signRes.json();
 
       const data = new FormData();
@@ -237,6 +237,7 @@ function ItemFormContent() {
       data.append("api_key", apiKey);
       data.append("timestamp", String(timestamp));
       data.append("folder", folder);
+      data.append("transformation", transformation);
       data.append("signature", signature);
 
       const uploadRes = await fetch(
