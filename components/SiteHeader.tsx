@@ -8,6 +8,7 @@ const NAV_LABELS: { href: string; label: string }[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/inventory", label: "Inventory" },
   { href: "/defects", label: "Defect Log" },
+  { href: "/checks", label: "Weekly Checks" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
 ];

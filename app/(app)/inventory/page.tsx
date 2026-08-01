@@ -4,8 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { useStore, type NewItemInput } from "@/lib/store";
-import { isLowStock } from "@/lib/inventory";
+import { formatUnit, isLowStock } from "@/lib/inventory";
 import type { InventoryItem, ItemStatus } from "@/lib/types";
 import { categoryIcon } from "@/lib/category-icons";
 import { itemImage } from "@/lib/category-images";
@@ -53,6 +54,7 @@ function SortHead({
 function InventoryCard({
   item,
   categoryLabel,
+  lastChecked,
   highlighted,
   reactivating,
   onRetire,
@@ -60,6 +62,8 @@ function InventoryCard({
 }: {
   item: InventoryItem;
   categoryLabel: string;
+  /** Human-readable "last checked" from the weekly presence checks. */
+  lastChecked: string | null;
   highlighted: boolean;
   reactivating: boolean;
   onRetire: () => void;
@@ -92,7 +96,10 @@ function InventoryCard({
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <strong className="truncate text-[0.9375rem] font-bold">{item.item_name}</strong>
-          <span className="text-xs text-ink-faint">{categoryLabel}</span>
+          <span className="text-xs text-ink-faint">
+            {categoryLabel}
+            {lastChecked ? ` · checked ${lastChecked}` : ""}
+          </span>
         </div>
 
         {lowStock && (
@@ -103,7 +110,7 @@ function InventoryCard({
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-line-subtle pt-2.5">
           <span className="text-[0.8125rem] tabular-nums text-muted-foreground">
-            {item.quantity} {item.unit_of_measure}
+            {item.quantity} {formatUnit(item.unit_of_measure, item.quantity)}
           </span>
           <div className="flex gap-1">
             <Button asChild variant="ghost" size="icon-sm" className="text-ink-faint hover:text-foreground">
@@ -192,7 +199,14 @@ function InventoryContent() {
     categoryName,
     departments,
     departmentName,
+    lastConfirmedAt,
   } = useStore();
+
+  // "3 days ago" from the weekly presence checks; null when never checked.
+  const lastCheckedLabel = (itemId: string): string | null => {
+    const iso = lastConfirmedAt(itemId);
+    return iso ? formatDistanceToNow(new Date(iso), { addSuffix: true }) : null;
+  };
 
   const initialStatus = searchParams.get("status");
   const initialCategory = searchParams.get("category");
@@ -492,6 +506,7 @@ function InventoryContent() {
                 <SortHead label="Quantity" sortKeyName="quantity" activeSortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <TableHead>Location</TableHead>
                 <SortHead label="Date Acquired" sortKeyName="dateAcquired" activeSortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <TableHead>Last Checked</TableHead>
                 <TableHead aria-label="Actions" />
               </TableRow>
             </TableHeader>
@@ -527,7 +542,7 @@ function InventoryContent() {
                       <StatusBadge status={item.status} />
                     </TableCell>
                     <TableCell>
-                      {item.quantity} {item.unit_of_measure}
+                      {item.quantity} {formatUnit(item.unit_of_measure, item.quantity)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{item.location || "—"}</TableCell>
                     <TableCell className="text-muted-foreground">
@@ -538,6 +553,9 @@ function InventoryContent() {
                             year: "numeric",
                           })
                         : "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {lastCheckedLabel(item.id) ?? "—"}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
@@ -583,7 +601,7 @@ function InventoryContent() {
               })}
               {pageItems.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <div className="py-16 text-center">
                       <p className="h-title mb-1.5">No items match your filters</p>
                       <p className="mb-4 text-muted-foreground">
@@ -606,6 +624,7 @@ function InventoryContent() {
               key={item.id}
               item={item}
               categoryLabel={categoryName(item.category_id)}
+              lastChecked={lastCheckedLabel(item.id)}
               highlighted={item.id === highlightId}
               reactivating={reactivatingId === item.id}
               onReactivate={() => handleReactivate(item.id)}

@@ -1,4 +1,4 @@
-import type { Defect, InventoryItem } from "@/lib/types";
+import type { CheckEntry, CheckSession, Defect, InventoryItem } from "@/lib/types";
 
 /**
  * Pure row → interface mappers shared by the read layer (lib/data/inventory.ts)
@@ -31,6 +31,44 @@ export function mapItem(row: Record<string, unknown>): InventoryItem {
       .map((img) => img.url),
     unit_of_measure: row.unit_of_measure as string,
     asset_type: row.asset_type as InventoryItem["asset_type"],
+  };
+}
+
+export function mapCheckEntry(row: Record<string, unknown>): CheckEntry {
+  return {
+    id: row.id as string,
+    session_id: row.session_id as string,
+    item_id: row.item_id as string,
+    result: row.result as CheckEntry["result"],
+    quantity_expected: row.quantity_expected as number,
+    quantity_seen: row.quantity_seen as number,
+    note: (row.note as string | null) ?? null,
+    checked_by: (row.checked_by as string | null) ?? null,
+    checked_at: row.checked_at as string,
+  };
+}
+
+export function mapCheckSession(
+  row: Record<string, unknown>,
+  entries: CheckEntry[] = []
+): CheckSession {
+  return {
+    id: row.id as string,
+    department_id: row.department_id as string,
+    session_type: row.session_type as CheckSession["session_type"],
+    week_start: row.week_start as string,
+    status: row.status as CheckSession["status"],
+    started_by: (row.started_by as string | null) ?? null,
+    completed_by: (row.completed_by as string | null) ?? null,
+    completed_at: (row.completed_at as string | null) ?? null,
+    total_items: (row.total_items as number | null) ?? null,
+    present_count: (row.present_count as number | null) ?? null,
+    missing_count: (row.missing_count as number | null) ?? null,
+    issue_count: (row.issue_count as number | null) ?? null,
+    shortfall_count: (row.shortfall_count as number | null) ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+    entries,
   };
 }
 

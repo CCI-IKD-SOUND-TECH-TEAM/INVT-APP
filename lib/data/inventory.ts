@@ -1,11 +1,15 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { subWeeks } from "date-fns";
 import { createClient } from "@/utils/supabase/server";
-import { mapDefect, mapItem } from "@/lib/data/mappers";
+import { mapCheckEntry, mapCheckSession, mapDefect, mapItem } from "@/lib/data/mappers";
+import { weekStartIso } from "@/lib/checks";
 import type {
   AuditEntry,
   Category,
+  CheckEntry,
+  CheckSession,
   Defect,
   Department,
   InventoryItem,
@@ -31,10 +35,16 @@ export interface StoreData {
   departments: Department[];
   units: string[];
   profiles: Profile[];
+  checkSessions: CheckSession[];
+  /** item_id → last time the item was seen (present/issue) in any check. */
+  lastConfirmed: Record<string, string>;
 }
 
 export async function getStoreData(): Promise<StoreData> {
   const supabase = createClient(await cookies());
+
+  const currentWeek = weekStartIso();
+  const historyCutoff = weekStartIso(subWeeks(new Date(), 12));
 
   const [
     { data: profileRows },
@@ -67,6 +77,52 @@ export async function getStoreData(): Promise<StoreData> {
       .limit(200),
   ]);
 
+  // Check sessions: the last 12 weeks of history, plus any in-progress session
+  // regardless of age (they stay resumable forever).
+  const [{ data: sessionRows }, { data: confirmedRows }] = await Promise.all([
+    supabase
+      .from("check_sessions")
+      .select("*")
+      .or(`week_start.gte.${historyCutoff},status.eq.in_progress`)
+      .order("week_start", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase.from("item_last_confirmed").select("item_id, last_confirmed_at"),
+  ]);
+
+  // Entries are only needed where the UI reads per-item detail: resumable
+  // (in-progress) sessions and current-week sessions (set-down diff, dashboard).
+  // Older completed sessions render from their summary counters alone.
+  const sessions = (sessionRows ?? []) as Record<string, unknown>[];
+  const idsNeedingEntries = sessions
+    .filter(
+      (s) => s.status === "in_progress" || s.week_start === currentWeek
+    )
+    .map((s) => s.id as string);
+
+  let entriesBySession = new Map<string, CheckEntry[]>();
+  if (idsNeedingEntries.length > 0) {
+    const { data: entryRows } = await supabase
+      .from("check_entries")
+      .select("*")
+      .in("session_id", idsNeedingEntries);
+    entriesBySession = (entryRows ?? []).reduce((acc, row) => {
+      const entry = mapCheckEntry(row);
+      const list = acc.get(entry.session_id);
+      if (list) list.push(entry);
+      else acc.set(entry.session_id, [entry]);
+      return acc;
+    }, new Map<string, CheckEntry[]>());
+  }
+
+  const checkSessions: CheckSession[] = sessions.map((row) =>
+    mapCheckSession(row, entriesBySession.get(row.id as string) ?? [])
+  );
+
+  const lastConfirmed: Record<string, string> = {};
+  for (const row of confirmedRows ?? []) {
+    lastConfirmed[row.item_id as string] = row.last_confirmed_at as string;
+  }
+
   const profiles: Profile[] = (profileRows ?? []) as Profile[];
   const nameById = new Map(profiles.map((p) => [p.id, p.full_name]));
 
@@ -91,5 +147,7 @@ export async function getStoreData(): Promise<StoreData> {
     departments: (departmentRows ?? []) as Department[],
     units: (unitRows ?? []).map((u) => u.name as string),
     profiles,
+    checkSessions,
+    lastConfirmed,
   };
 }

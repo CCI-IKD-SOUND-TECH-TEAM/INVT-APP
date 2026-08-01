@@ -10,6 +10,7 @@ import SectionCards from "@/components/dashboard/SectionCards";
 import CategoryBreakdown from "@/components/dashboard/CategoryBreakdown";
 import DefectSummary from "@/components/dashboard/DefectSummary";
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
+import WeeklyCheckCard from "@/components/dashboard/WeeklyCheckCard";
 
 export default function DashboardPage() {
   const { items, defects, activity, categoryName } = useStore();
@@ -111,6 +112,7 @@ export default function DashboardPage() {
         <DashboardTabs activity={activity} lowStockItems={lowStockItems} />
 
         <div className="flex flex-col gap-4">
+          <WeeklyCheckCard />
           <DefectSummary counts={defectCounts} />
           <CategoryBreakdown data={categoryData} />
         </div>

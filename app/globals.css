@@ -236,9 +236,12 @@
   }
 
   .h-title {
+    /* Title style is Lato 700 (DESIGN.md) — override the global h1-h4 Anton rule. */
+    font-family: var(--font-body);
     font-weight: 700;
     font-size: 1.0625rem;
     line-height: 1.3;
+    letter-spacing: normal;
   }
 
   .h-label {

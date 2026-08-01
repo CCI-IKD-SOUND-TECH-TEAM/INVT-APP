@@ -191,6 +191,7 @@ function DefectLogContent() {
       {logOpen && (
         <LogDefectModal
           items={items.filter((i) => i.status !== "Retired")}
+          initialItemId={searchParams.get("item") ?? undefined}
           onClose={closeLogModal}
         />
       )}
@@ -340,13 +341,20 @@ function DefectDrawer({
 
 function LogDefectModal({
   items,
+  initialItemId,
   onClose,
 }: {
   items: InventoryItem[];
+  /** Pre-select an item (deep link from the weekly check walkthrough). */
+  initialItemId?: string;
   onClose: () => void;
 }) {
   const { logDefect } = useStore();
-  const [itemId, setItemId] = useState("");
+  const [itemId, setItemId] = useState(() =>
+    initialItemId && items.some((i) => i.id === initialItemId)
+      ? initialItemId
+      : ""
+  );
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<DefectSeverity | "">("");
   const [dateReported, setDateReported] = useState(TODAY);

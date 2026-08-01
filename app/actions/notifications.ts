@@ -8,7 +8,9 @@ import DefectLoggedEmail from "@/lib/email/templates/defect-logged";
 import DefectResolvedEmail, {
   type DefectOutcome,
 } from "@/lib/email/templates/defect-resolved";
-import type { DefectSeverity } from "@/lib/types";
+import CheckCompletedEmail from "@/lib/email/templates/check-completed";
+import { CHECK_TYPE_LABEL } from "@/lib/checks";
+import type { CheckType, DefectSeverity } from "@/lib/types";
 
 /**
  * Defect notifications.
@@ -64,6 +66,40 @@ export async function notifyDefectLogged(input: {
     });
   } catch (err) {
     console.error("[notify] defect-logged failed", err);
+  }
+}
+
+export async function notifyCheckCompleted(input: {
+  actorId: string;
+  actorName: string;
+  departmentName: string;
+  sessionType: CheckType;
+  weekStart: string;
+  missing: string[];
+  shortfalls: { name: string; seen: number; expected: number }[];
+  issues: string[];
+}): Promise<void> {
+  try {
+    const to = await recipients(input.actorId);
+    if (to.length === 0) return;
+
+    const label = CHECK_TYPE_LABEL[input.sessionType];
+    await sendEmail({
+      to,
+      subject: `Missing items — ${input.departmentName} ${label.toLowerCase()} check`,
+      react: CheckCompletedEmail({
+        departmentName: input.departmentName,
+        sessionLabel: label,
+        weekStart: input.weekStart,
+        completedBy: input.actorName,
+        missing: input.missing,
+        shortfalls: input.shortfalls,
+        issues: input.issues,
+        url: `${siteUrl()}/checks`,
+      }),
+    });
+  } catch (err) {
+    console.error("[notify] check-completed failed", err);
   }
 }
 

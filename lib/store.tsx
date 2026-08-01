@@ -27,10 +27,21 @@ import {
   renameCategory as renameCategoryAction,
   renameUnit as renameUnitAction,
 } from "@/app/actions/taxonomy";
+import {
+  abandonCheckSession as abandonCheckSessionAction,
+  bulkMarkRemainingPresent as bulkMarkRemainingPresentAction,
+  completeCheckSession as completeCheckSessionAction,
+  recordCheckEntry as recordCheckEntryAction,
+  startCheckSession as startCheckSessionAction,
+} from "@/app/actions/checks";
 import { logAccessEmail as logAccessEmailAction } from "@/app/actions/audit";
 import type {
   AuditEntry,
   Category,
+  CheckEntry,
+  CheckResult,
+  CheckSession,
+  CheckType,
   Defect,
   Department,
   InventoryItem,
@@ -56,6 +67,9 @@ export interface StoreSeed {
   departments: Department[];
   units: string[];
   profiles: Profile[];
+  checkSessions: CheckSession[];
+  /** item_id → last time the item was seen (present/issue) in any check. */
+  lastConfirmed: Record<string, string>;
 }
 
 interface StoreValue {
@@ -103,6 +117,25 @@ interface StoreValue {
   users: string[];
   categoryUsage: (name: string) => number;
   unitUsage: (name: string) => number;
+
+  checkSessions: CheckSession[];
+  getCheckSession: (id: string) => CheckSession | undefined;
+  lastConfirmedAt: (itemId: string) => string | undefined;
+  startCheckSession: (
+    departmentId: string,
+    type: CheckType
+  ) => Promise<CheckSession | { error: string }>;
+  recordCheckEntry: (input: {
+    session_id: string;
+    item_id: string;
+    result: CheckResult;
+    quantity_seen?: number;
+    note?: string;
+  }) => Promise<MutationResult>;
+  bulkMarkRemainingPresent: (sessionId: string) => Promise<MutationResult>;
+  completeCheckSession: (sessionId: string) => Promise<MutationResult>;
+  abandonCheckSession: (sessionId: string) => Promise<MutationResult>;
+
   addCategory: (name: string) => Promise<MutationResult>;
   renameCategory: (from: string, to: string) => Promise<MutationResult>;
   deleteCategory: (name: string) => Promise<MutationResult>;
@@ -132,6 +165,12 @@ export function StoreProvider({
   const [departmentList] = useState<Department[]>(seed.departments);
   const [profileList] = useState<Profile[]>(seed.profiles);
   const [units, setUnits] = useState<string[]>(seed.units);
+  const [checkSessions, setCheckSessions] = useState<CheckSession[]>(
+    seed.checkSessions
+  );
+  const [lastConfirmed, setLastConfirmed] = useState<Record<string, string>>(
+    seed.lastConfirmed
+  );
 
   const prependActivity = useCallback((entry?: AuditEntry) => {
     if (entry) setActivity((prev) => [entry, ...prev]);
@@ -163,10 +202,20 @@ export function StoreProvider({
       [...categoryList].map((c) => c.name).sort((a, b) => a.localeCompare(b)),
     [categoryList]
   );
-  const departments = useMemo(
-    () => departmentList.map((d) => d.name),
-    [departmentList]
-  );
+  const departments = useMemo(() => {
+    // Canonical display order — Sound leads; unknown departments follow alphabetically.
+    const order = ["Sound", "Light", "Projection"];
+    return departmentList
+      .map((d) => d.name)
+      .sort((a, b) => {
+        const ai = order.indexOf(a);
+        const bi = order.indexOf(b);
+        if (ai !== -1 || bi !== -1) {
+          return (ai === -1 ? order.length : ai) - (bi === -1 ? order.length : bi);
+        }
+        return a.localeCompare(b);
+      });
+  }, [departmentList]);
   const users = useMemo(
     () => profileList.map((p) => p.full_name),
     [profileList]
@@ -416,6 +465,115 @@ export function StoreProvider({
     [prependActivity]
   );
 
+  const getCheckSession = useCallback(
+    (id: string) => checkSessions.find((s) => s.id === id),
+    [checkSessions]
+  );
+
+  const lastConfirmedAt = useCallback(
+    (itemId: string) => lastConfirmed[itemId],
+    [lastConfirmed]
+  );
+
+  /** Insert or replace a session by id, keeping newest-week-first order. */
+  const upsertSession = useCallback((session: CheckSession) => {
+    setCheckSessions((prev) => {
+      const exists = prev.some((s) => s.id === session.id);
+      return exists
+        ? prev.map((s) => (s.id === session.id ? session : s))
+        : [session, ...prev];
+    });
+  }, []);
+
+  /** Mirror the item_last_confirmed view: present/issue = physically seen. */
+  const applyConfirmations = useCallback((entries: CheckEntry[]) => {
+    const seen = entries.filter((e) => e.result !== "missing");
+    if (seen.length === 0) return;
+    setLastConfirmed((prev) => {
+      const next = { ...prev };
+      for (const e of seen) next[e.item_id] = e.checked_at;
+      return next;
+    });
+  }, []);
+
+  const startCheckSession = useCallback(
+    async (departmentId: string, type: CheckType) => {
+      const res = await startCheckSessionAction({
+        department_id: departmentId,
+        session_type: type,
+      });
+      if ("error" in res) return { error: res.error };
+      upsertSession(res.session);
+      return res.session;
+    },
+    [upsertSession]
+  );
+
+  const recordCheckEntry = useCallback(
+    async (input: {
+      session_id: string;
+      item_id: string;
+      result: CheckResult;
+      quantity_seen?: number;
+      note?: string;
+    }): Promise<MutationResult> => {
+      const res = await recordCheckEntryAction(input);
+      if ("error" in res) return { ok: false, error: res.error };
+      setCheckSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== input.session_id) return s;
+          const exists = s.entries.some((e) => e.item_id === input.item_id);
+          return {
+            ...s,
+            entries: exists
+              ? s.entries.map((e) =>
+                  e.item_id === input.item_id ? res.entry : e
+                )
+              : [...s.entries, res.entry],
+          };
+        })
+      );
+      applyConfirmations([res.entry]);
+      return { ok: true };
+    },
+    [applyConfirmations]
+  );
+
+  const bulkMarkRemainingPresent = useCallback(
+    async (sessionId: string): Promise<MutationResult> => {
+      const res = await bulkMarkRemainingPresentAction(sessionId);
+      if ("error" in res) return { ok: false, error: res.error };
+      setCheckSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, entries: res.entries } : s))
+      );
+      applyConfirmations(res.entries);
+      return { ok: true };
+    },
+    [applyConfirmations]
+  );
+
+  const completeCheckSession = useCallback(
+    async (sessionId: string): Promise<MutationResult> => {
+      const res = await completeCheckSessionAction(sessionId);
+      if ("error" in res) return { ok: false, error: res.error };
+      upsertSession(res.session);
+      prependActivity(res.activity);
+      return { ok: true };
+    },
+    [upsertSession, prependActivity]
+  );
+
+  const abandonCheckSession = useCallback(
+    async (sessionId: string): Promise<MutationResult> => {
+      const res = await abandonCheckSessionAction(sessionId);
+      if ("error" in res) return { ok: false, error: res.error };
+      upsertSession(res.session);
+      prependActivity(res.activity);
+      return { ok: true };
+    },
+    [upsertSession, prependActivity]
+  );
+
   const logAccessEmail = useCallback(
     async (name: string, kind: "invite" | "sign-in") => {
       const res = await logAccessEmailAction(name, kind);
@@ -462,6 +620,14 @@ export function StoreProvider({
       addUnit,
       renameUnit,
       deleteUnit,
+      checkSessions,
+      getCheckSession,
+      lastConfirmedAt,
+      startCheckSession,
+      recordCheckEntry,
+      bulkMarkRemainingPresent,
+      completeCheckSession,
+      abandonCheckSession,
       logAccessEmail,
     }),
     [
@@ -497,6 +663,14 @@ export function StoreProvider({
       addUnit,
       renameUnit,
       deleteUnit,
+      checkSessions,
+      getCheckSession,
+      lastConfirmedAt,
+      startCheckSession,
+      recordCheckEntry,
+      bulkMarkRemainingPresent,
+      completeCheckSession,
+      abandonCheckSession,
       logAccessEmail,
     ]
   );
