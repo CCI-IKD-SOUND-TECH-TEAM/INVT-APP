@@ -24,12 +24,12 @@ import { useStore } from "@/lib/store";
 import { signOut } from "@/app/actions/auth";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: Squares2X2Icon },
-  { href: "/inventory", label: "Inventory", icon: ArchiveBoxIcon },
-  { href: "/defects", label: "Defect Log", icon: WrenchScrewdriverIcon },
-  { href: "/checks", label: "Weekly Checks", icon: ClipboardDocumentCheckIcon },
-  { href: "/reports", label: "Reports", icon: DocumentChartBarIcon },
-  { href: "/settings", label: "Settings", icon: Cog6ToothIcon },
+  { href: "/dashboard", label: "Dashboard", icon: Squares2X2Icon, tour: "nav-dashboard" },
+  { href: "/inventory", label: "Inventory", icon: ArchiveBoxIcon, tour: "nav-inventory" },
+  { href: "/defects", label: "Defect Log", icon: WrenchScrewdriverIcon, tour: "nav-defects" },
+  { href: "/checks", label: "Weekly Checks", icon: ClipboardDocumentCheckIcon, tour: "nav-checks" },
+  { href: "/reports", label: "Reports", icon: DocumentChartBarIcon, tour: "nav-reports" },
+  { href: "/settings", label: "Settings", icon: Cog6ToothIcon, tour: "nav-settings" },
 ];
 
 function initials(name: string) {
@@ -111,7 +111,11 @@ export default function AppSidebar() {
                     isActive={active}
                     tooltip={item.label}
                   >
-                    <Link href={item.href} onClick={() => setOpenMobile(false)}>
+                    <Link
+                      href={item.href}
+                      data-tour={item.tour}
+                      onClick={() => setOpenMobile(false)}
+                    >
                       <Icon />
                       <span className="group-data-[collapsible=icon]:hidden">
                         {item.label}

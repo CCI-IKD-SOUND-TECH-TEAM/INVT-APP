@@ -24,6 +24,8 @@ export interface Profile {
   email: string;
   is_active: boolean;
   last_login_at?: string | null;
+  /** Set when the onboarding tour was finished or skipped. Null = show tour. */
+  tour_completed_at?: string | null;
   created_at: string;
 }
 

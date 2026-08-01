@@ -36,11 +36,20 @@ export default async function AppGroupLayout({
     email: profile?.email ?? user.email ?? "",
   };
 
+  // Queried separately from the profile row above so an environment where
+  // migration 0004 hasn't been applied yet degrades to "offer the tour"
+  // instead of breaking the name/email fallback.
+  const { data: tourRow } = await supabase
+    .from("profiles")
+    .select("tour_completed_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
   const seed = await getStoreData();
 
   return (
     <StoreProvider currentUser={currentUser} seed={seed}>
-      <AppShell>{children}</AppShell>
+      <AppShell tourAutoStart={!tourRow?.tour_completed_at}>{children}</AppShell>
     </StoreProvider>
   );
 }

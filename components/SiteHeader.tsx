@@ -21,7 +21,10 @@ export default function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line-subtle bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-      <SidebarTrigger className="-ml-1.5 text-muted-foreground" />
+      <SidebarTrigger
+        data-tour="sidebar-trigger"
+        className="-ml-1.5 text-muted-foreground"
+      />
       <Separator orientation="vertical" className="h-5" />
       <span className="h-title">{activeLabel}</span>
     </header>

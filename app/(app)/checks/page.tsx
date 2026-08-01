@@ -201,7 +201,14 @@ function ChecksContent() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={changeTab} className="gap-6">
+      {/* Tour anchor lives on the Tabs root, not a Start button — the
+          buttons are conditional (all-done / no-items / stale states). */}
+      <Tabs
+        value={activeTab}
+        onValueChange={changeTab}
+        className="gap-6"
+        data-tour="start-check"
+      >
         <TabsList>
           {departments.map((deptName) => {
             const deptId = departmentIdByName(deptName);

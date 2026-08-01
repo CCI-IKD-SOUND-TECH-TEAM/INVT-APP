@@ -365,7 +365,7 @@ function InventoryContent() {
             <ArrowUpTrayIcon className="size-4" /> Bulk Import
           </Button>
           <Button asChild>
-            <Link href="/inventory/new">
+            <Link href="/inventory/new" data-tour="add-item">
               <PlusIcon className="size-4" /> Add Item
             </Link>
           </Button>

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useStore, type MutationResult } from "@/lib/store";
+import { useTour } from "@/components/tour/TourProvider";
 import { inviteUser, requestSignIn } from "@/app/actions/auth";
 import type { Profile } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ type Toast = { message: string; tone: "good" | "bad" } | null;
 
 export default function SettingsPage() {
   const store = useStore();
+  const { startTour } = useTour();
   const [toast, setToast] = useState<Toast>(null);
 
   function flash(message: string, tone: "good" | "bad" = "good") {
@@ -77,6 +79,24 @@ export default function SettingsPage() {
         }}
         onError={(message) => flash(message, "bad")}
       />
+
+      <Card className="gap-4">
+        <CardHeader>
+          <CardTitle>Product Tour</CardTitle>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={startTour}
+          >
+            Replay tour
+          </Button>
+        </CardHeader>
+        <p className="text-sm text-muted-foreground">
+          Walk through the main areas again — navigation, adding equipment,
+          and weekly checks. Replaying changes nothing else.
+        </p>
+      </Card>
 
       {toast && (
         <div

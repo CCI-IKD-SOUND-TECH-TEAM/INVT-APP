@@ -32,6 +32,14 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+  /**
+   * While true, the mobile sheet renders non-modal and ignores every dismiss
+   * gesture (outside tap, Escape, focus-out). The onboarding tour sets this
+   * so it can spotlight the nav links inside the open sheet — a modal Radix
+   * sheet would trap focus and close on any tap on the tour tooltip.
+   */
+  mobileSheetLocked: boolean;
+  setMobileSheetLocked: (locked: boolean) => void;
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -59,6 +67,7 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
+  const [mobileSheetLocked, setMobileSheetLocked] = React.useState(false);
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
@@ -104,8 +113,19 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      mobileSheetLocked,
+      setMobileSheetLocked,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+      mobileSheetLocked,
+    ]
   );
 
   return (
@@ -143,7 +163,8 @@ function Sidebar({
   side?: "left" | "right";
   collapsible?: "offcanvas" | "icon" | "none";
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, mobileSheetLocked } =
+    useSidebar();
 
   if (collapsible === "none") {
     return (
@@ -162,13 +183,30 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+      <Sheet
+        open={openMobile}
+        onOpenChange={setOpenMobile}
+        // Non-modal while the tour has the sheet locked: modal mode sets
+        // pointer-events: none on <body> and traps focus, which would make
+        // the tour tooltip (a sibling portal) unclickable.
+        modal={!mobileSheetLocked}
+        {...props}
+      >
         <SheetContent
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
           side={side}
           showClose={false}
+          onEscapeKeyDown={
+            mobileSheetLocked ? (e) => e.preventDefault() : undefined
+          }
+          onInteractOutside={
+            mobileSheetLocked ? (e) => e.preventDefault() : undefined
+          }
+          onFocusOutside={
+            mobileSheetLocked ? (e) => e.preventDefault() : undefined
+          }
           className="w-(--sidebar-width) bg-sidebar p-0 [&>button]:hidden"
           style={
             { "--sidebar-width": SIDEBAR_WIDTH_MOBILE } as React.CSSProperties
