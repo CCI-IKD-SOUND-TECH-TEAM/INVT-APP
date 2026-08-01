@@ -34,6 +34,7 @@ interface FormState {
   department: string;
   assetType: AssetType | "";
   minStockThreshold: string;
+  estimatedValue: string;
   location: string;
   dateAcquired: string;
   remarks: string;
@@ -50,6 +51,7 @@ const EMPTY_FORM: FormState = {
   department: "",
   assetType: "",
   minStockThreshold: "",
+  estimatedValue: "",
   location: "",
   dateAcquired: "",
   remarks: "",
@@ -73,6 +75,10 @@ function itemToForm(
     minStockThreshold:
       typeof item.minimum_stock_threshold === "number"
         ? String(item.minimum_stock_threshold)
+        : "",
+    estimatedValue:
+      typeof item.estimated_value === "number"
+        ? String(item.estimated_value)
         : "",
     location: item.location ?? "",
     dateAcquired: item.date_acquired ?? "",
@@ -185,6 +191,12 @@ function ItemFormContent() {
         next.minStockThreshold = "Threshold must be a whole number of 0 or more.";
     }
 
+    if (form.estimatedValue.trim() !== "") {
+      const value = Number(form.estimatedValue);
+      if (!Number.isFinite(value) || value < 0)
+        next.estimatedValue = "Estimated Value must be a number of 0 or more.";
+    }
+
     if (form.location.length > 100)
       next.location = "Location must be 100 characters or fewer.";
 
@@ -281,6 +293,8 @@ function ItemFormContent() {
         form.minStockThreshold.trim() === ""
           ? null
           : Number(form.minStockThreshold),
+      estimated_value:
+        form.estimatedValue.trim() === "" ? null : Number(form.estimatedValue),
       location: form.location.trim() || null,
       date_acquired: form.dateAcquired || null,
       remarks: form.remarks.trim() || null,
@@ -521,6 +535,25 @@ function ItemFormContent() {
               {errors.minStockThreshold && (
                 <span className="field-error">
                   <ExclamationTriangleIcon className="size-[13px]" /> {errors.minStockThreshold}
+                </span>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="estimatedValue">Estimated Value (₦)</Label>
+              <Input
+                id="estimatedValue"
+                type="number"
+                min={0}
+                step="0.01"
+                aria-invalid={Boolean(errors.estimatedValue)}
+                value={form.estimatedValue}
+                onChange={(e) => set("estimatedValue", e.target.value)}
+                placeholder="Per unit, optional"
+              />
+              {errors.estimatedValue && (
+                <span className="field-error">
+                  <ExclamationTriangleIcon className="size-[13px]" /> {errors.estimatedValue}
                 </span>
               )}
             </div>

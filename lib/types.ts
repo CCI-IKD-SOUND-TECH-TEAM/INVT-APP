@@ -54,6 +54,8 @@ export interface InventoryItem {
   date_acquired?: string | null;
   remarks?: string | null;
   serial_number?: string | null;
+  /** Estimated replacement/purchase value per unit, in NGN. */
+  estimated_value?: number | null;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;

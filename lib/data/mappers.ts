@@ -22,6 +22,9 @@ export function mapItem(row: Record<string, unknown>): InventoryItem {
     date_acquired: (row.date_acquired as string | null) ?? null,
     remarks: (row.remarks as string | null) ?? null,
     serial_number: (row.serial_number as string | null) ?? null,
+    // PostgREST returns numeric columns as strings — coerce to number.
+    estimated_value:
+      row.estimated_value == null ? null : Number(row.estimated_value),
     created_by: (row.created_by as string | null) ?? null,
     updated_by: (row.updated_by as string | null) ?? null,
     created_at: row.created_at as string,

@@ -32,6 +32,7 @@ const ITEM_COLUMNS = new Set([
   "date_acquired",
   "remarks",
   "serial_number",
+  "estimated_value",
   "unit_of_measure",
   "asset_type",
 ]);
@@ -67,6 +68,7 @@ export async function createItem(input: NewItemInput): Promise<ItemResult> {
       date_acquired: input.date_acquired ?? null,
       remarks: input.remarks ?? null,
       serial_number: input.serial_number ?? null,
+      estimated_value: input.estimated_value ?? null,
       unit_of_measure: input.unit_of_measure,
       asset_type: input.asset_type,
       created_by: actor.id,

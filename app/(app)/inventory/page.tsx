@@ -165,6 +165,63 @@ const ALL_STATUSES: ItemStatus[] = [
 
 const PAGE_SIZE = 25;
 
+function Pager({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number | ((p: number) => number)) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[0.8125rem] text-ink-faint">
+        Page {page} of {totalPages}
+      </span>
+      <div className="flex gap-1">
+        <button
+          type="button"
+          className="flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+          disabled={page === 1}
+          onClick={() => onChange((p) => p - 1)}
+        >
+          ‹
+        </button>
+        {Array.from({ length: totalPages }, (_, i) => i + 1)
+          .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+          .map((p, idx, arr) => (
+            <span key={p} className="flex">
+              {idx > 0 && arr[idx - 1] !== p - 1 && (
+                <span className="flex h-8 min-w-8 items-center justify-center text-[0.8125rem] text-muted-foreground">
+                  …
+                </span>
+              )}
+              <button
+                type="button"
+                className={cn(
+                  "flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground",
+                  p === page && "bg-brand text-white hover:bg-brand hover:text-white"
+                )}
+                onClick={() => onChange(p)}
+              >
+                {p}
+              </button>
+            </span>
+          ))}
+        <button
+          type="button"
+          className="flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
+          disabled={page === totalPages}
+          onClick={() => onChange((p) => p + 1)}
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const TEMPLATE_HEADERS = [
   "Item Name",
   "Serial Number",
@@ -357,7 +414,15 @@ function InventoryContent() {
         <div>
           <h1 className="h-headline">Inventory</h1>
           <p className="mt-1.5 text-muted-foreground">
-            {filtered.length} of {items.length} items shown.
+            {filtered.length === 0
+              ? `0 of ${items.length} items shown.`
+              : `Showing ${(clampedPage - 1) * PAGE_SIZE + 1}–${Math.min(
+                  clampedPage * PAGE_SIZE,
+                  filtered.length
+                )} of ${filtered.length} items` +
+                (filtered.length !== items.length
+                  ? ` (filtered from ${items.length}).`
+                  : ".")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -493,6 +558,10 @@ function InventoryContent() {
             </Button>
           </div>
         </div>
+      )}
+
+      {totalPages > 1 && (
+        <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
       )}
 
       {view === "table" ? (
@@ -643,50 +712,7 @@ function InventoryContent() {
       )}
 
       {filtered.length > 0 && (
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-[0.8125rem] text-ink-faint">
-            Page {clampedPage} of {totalPages}
-          </span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              className="flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
-              disabled={clampedPage === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              ‹
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter((p) => p === 1 || p === totalPages || Math.abs(p - clampedPage) <= 1)
-              .map((p, idx, arr) => (
-                <span key={p} className="flex">
-                  {idx > 0 && arr[idx - 1] !== p - 1 && (
-                    <span className="flex h-8 min-w-8 items-center justify-center text-[0.8125rem] text-muted-foreground">
-                      …
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground",
-                      p === clampedPage && "bg-brand text-white hover:bg-brand hover:text-white"
-                    )}
-                    onClick={() => setPage(p)}
-                  >
-                    {p}
-                  </button>
-                </span>
-              ))}
-            <button
-              type="button"
-              className="flex h-8 min-w-8 items-center justify-center rounded-sm text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:bg-popover hover:text-foreground disabled:pointer-events-none disabled:opacity-35"
-              disabled={clampedPage === totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              ›
-            </button>
-          </div>
-        </div>
+        <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
       )}
 
       {retireTarget && (
