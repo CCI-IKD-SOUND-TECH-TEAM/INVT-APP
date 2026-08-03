@@ -124,6 +124,10 @@ function WalkthroughView({ session }: { session: CheckSession }) {
   const missing = session.entries.filter((e) => e.result === "missing");
   const issues = session.entries.filter((e) => e.result === "issue");
   const shortfalls = session.entries.filter(isShortfall);
+  const notApplicable = session.entries.filter(
+    (e) => e.result === "not_applicable"
+  );
+  const uncheckedItems = checkable.filter((it) => !entryByItem.has(it.id));
   const itemName = (id: string) =>
     items.find((it) => it.id === id)?.item_name ?? "Unknown item";
 
@@ -256,7 +260,7 @@ function WalkthroughView({ session }: { session: CheckSession }) {
             )}
             <Button
               size="sm"
-              disabled={remaining > 0}
+              disabled={checkedCount === 0}
               onClick={() => setConfirmComplete(true)}
             >
               Complete check
@@ -266,7 +270,7 @@ function WalkthroughView({ session }: { session: CheckSession }) {
       </div>
 
       {confirmBulk && (
-        <Modal title="Mark remaining present" onClose={() => setConfirmBulk(false)}>
+        <Modal title="Mark remaining present" wide onClose={() => setConfirmBulk(false)}>
           <p className="text-sm text-muted-foreground">
             Mark the {remaining} unchecked{" "}
             {remaining === 1 ? "item" : "items"} as present at full quantity?
@@ -284,9 +288,25 @@ function WalkthroughView({ session }: { session: CheckSession }) {
       )}
 
       {confirmComplete && (
-        <Modal title={`Complete ${label.toLowerCase()} check`} onClose={() => setConfirmComplete(false)}>
+        <Modal title={`Complete ${label.toLowerCase()} check`} wide onClose={() => setConfirmComplete(false)}>
           <div className="flex flex-col gap-3">
-            {missing.length === 0 && shortfalls.length === 0 && issues.length === 0 ? (
+            {remaining > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-status-caution/40 bg-status-caution/10 px-3 py-2.5 text-sm">
+                <ExclamationTriangleIcon className="mt-0.5 size-4 shrink-0 text-status-caution" />
+                <span>
+                  {remaining} {remaining === 1 ? "item hasn't" : "items haven't"}{" "}
+                  been checked. {remaining === 1 ? "It" : "They"}&apos;ll be
+                  recorded as unchecked — this week&apos;s record won&apos;t
+                  confirm whether {remaining === 1 ? "it was" : "they were"}{" "}
+                  present.
+                </span>
+              </div>
+            )}
+            {remaining === 0 &&
+            missing.length === 0 &&
+            shortfalls.length === 0 &&
+            issues.length === 0 &&
+            notApplicable.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Everything is present — {checkedCount}{" "}
                 {checkedCount === 1 ? "item" : "items"} accounted for.
@@ -311,6 +331,16 @@ function WalkthroughView({ session }: { session: CheckSession }) {
                   tone="text-status-caution"
                   rows={issues.map((e) => itemName(e.item_id))}
                 />
+                <SummaryList
+                  label="Not applicable"
+                  tone="text-status-neutral"
+                  rows={notApplicable.map((e) => itemName(e.item_id))}
+                />
+                <SummaryList
+                  label="Unchecked"
+                  tone="text-status-caution"
+                  rows={uncheckedItems.map((it) => it.item_name)}
+                />
                 {(missing.length > 0 || shortfalls.length > 0) && (
                   <p className="text-sm text-muted-foreground">
                     Completing will email the team about the{" "}
@@ -324,7 +354,9 @@ function WalkthroughView({ session }: { session: CheckSession }) {
                 Keep checking
               </Button>
               <Button loading={busy} onClick={complete}>
-                Complete check
+                {remaining > 0
+                  ? `Complete with ${remaining} unchecked`
+                  : "Complete check"}
               </Button>
             </div>
           </div>
@@ -443,6 +475,16 @@ function SummaryView({ session }: { session: CheckSession }) {
             value={session.shortfall_count ?? 0}
             tone={session.shortfall_count ? "text-status-caution" : undefined}
           />
+          <Stat
+            label="N/A"
+            value={session.na_count ?? 0}
+            tone={session.na_count ? "text-status-neutral" : undefined}
+          />
+          <Stat
+            label="Unchecked"
+            value={session.unchecked_count ?? 0}
+            tone={session.unchecked_count ? "text-status-caution" : undefined}
+          />
         </div>
       )}
 
@@ -461,6 +503,11 @@ function SummaryView({ session }: { session: CheckSession }) {
           <EntryGroup
             title="With issues"
             entries={byResult("issue")}
+            itemName={itemName}
+          />
+          <EntryGroup
+            title="Not applicable"
+            entries={byResult("not_applicable")}
             itemName={itemName}
           />
           <EntryGroup

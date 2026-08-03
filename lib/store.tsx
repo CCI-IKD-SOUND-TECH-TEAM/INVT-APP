@@ -487,7 +487,9 @@ export function StoreProvider({
 
   /** Mirror the item_last_confirmed view: present/issue = physically seen. */
   const applyConfirmations = useCallback((entries: CheckEntry[]) => {
-    const seen = entries.filter((e) => e.result !== "missing");
+    const seen = entries.filter(
+      (e) => e.result === "present" || e.result === "issue"
+    );
     if (seen.length === 0) return;
     setLastConfirmed((prev) => {
       const next = { ...prev };

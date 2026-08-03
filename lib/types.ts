@@ -111,7 +111,7 @@ export type CheckType = "setup" | "set_down";
 
 export type CheckSessionStatus = "in_progress" | "completed" | "abandoned";
 
-export type CheckResult = "present" | "missing" | "issue";
+export type CheckResult = "present" | "missing" | "issue" | "not_applicable";
 
 export interface CheckEntry {
   id: string;
@@ -141,6 +141,9 @@ export interface CheckSession {
   missing_count: number | null;
   issue_count: number | null;
   shortfall_count: number | null;
+  na_count: number | null;
+  /** Items never marked before completion (partial checks). */
+  unchecked_count: number | null;
   created_at: string;
   updated_at: string;
   /** Loaded for in-progress and current-week sessions; [] for older history. */

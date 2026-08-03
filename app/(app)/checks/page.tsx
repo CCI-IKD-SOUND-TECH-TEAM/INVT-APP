@@ -41,13 +41,15 @@ function fmtWeek(weekStart: string) {
   return `Week of ${format(parseISO(weekStart), "EEE d MMM")}`;
 }
 
-/** "3 present · 1 missing · 2 issues · 1 short" from a completed session. */
+/** "3 present · 1 missing · 2 issues · 1 short · 1 N/A" from a completed session. */
 function summaryText(s: CheckSession): string {
   const parts = [`${s.present_count ?? 0} present`];
   if (s.missing_count) parts.push(`${s.missing_count} missing`);
   if (s.issue_count)
     parts.push(`${s.issue_count} ${s.issue_count === 1 ? "issue" : "issues"}`);
   if (s.shortfall_count) parts.push(`${s.shortfall_count} short`);
+  if (s.na_count) parts.push(`${s.na_count} N/A`);
+  if (s.unchecked_count) parts.push(`${s.unchecked_count} unchecked`);
   return parts.join(" · ");
 }
 

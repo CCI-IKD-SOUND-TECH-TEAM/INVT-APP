@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   IconCircleCheckFilled as CheckCircleIcon,
   IconAlertCircleFilled as ExclamationCircleIcon,
+  IconBan as BanIcon,
   IconCircleX as XCircleIcon,
 } from "@tabler/icons-react";
 import type { CheckEntry, CheckResult } from "@/lib/types";
@@ -21,6 +22,7 @@ const CONFIG: Record<
   present: { label: "Present", tone: "text-status-good", icon: CheckCircleIcon },
   missing: { label: "Missing", tone: "text-status-critical", icon: XCircleIcon },
   issue: { label: "Issue", tone: "text-status-caution", icon: ExclamationCircleIcon },
+  not_applicable: { label: "N/A", tone: "text-status-neutral", icon: BanIcon },
 };
 
 export default function CheckResultBadge({

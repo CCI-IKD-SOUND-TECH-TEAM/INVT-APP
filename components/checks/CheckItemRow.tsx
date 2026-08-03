@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   IconAlertCircle as ExclamationCircleIcon,
+  IconBan as BanIcon,
   IconCheck as CheckIcon,
   IconMinus as MinusIcon,
   IconPlus as PlusIcon,
@@ -16,10 +17,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * One item in the walkthrough list. Mobile-first: three fat tap targets
- * (Present / Missing / Issue), an inline count stepper for quantity items
- * marked present, and — during set-down — an annotation of what the setup
- * check recorded for the same item.
+ * One item in the walkthrough list. Mobile-first: four fat tap targets
+ * (Present / Missing / Issue / N/A), an inline count stepper for quantity
+ * items marked present, and — during set-down — an annotation of what the
+ * setup check recorded for the same item.
  */
 export default function CheckItemRow({
   item,
@@ -57,11 +58,13 @@ export default function CheckItemRow({
       ? "not checked at setup"
       : setupEntry.result === "missing"
         ? "missing at setup"
-        : isShortfall(setupEntry)
-          ? `${setupEntry.quantity_seen} of ${setupEntry.quantity_expected} at setup`
-          : setupEntry.result === "issue"
-            ? "issue at setup"
-            : "present at setup";
+        : setupEntry.result === "not_applicable"
+          ? "n/a at setup"
+          : isShortfall(setupEntry)
+            ? `${setupEntry.quantity_seen} of ${setupEntry.quantity_expected} at setup`
+            : setupEntry.result === "issue"
+              ? "issue at setup"
+              : "present at setup";
 
   const stepperMax = item.quantity;
   const seen = entry?.quantity_seen ?? item.quantity;
@@ -132,6 +135,21 @@ export default function CheckItemRow({
           >
             <ExclamationCircleIcon className="size-4" />
             <span className="hidden sm:inline">Issue</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className={cn(
+              entry?.result === "not_applicable" &&
+                "border-status-neutral text-status-neutral"
+            )}
+            disabled={pending}
+            aria-pressed={entry?.result === "not_applicable"}
+            aria-label="Not applicable"
+            onClick={() => record("not_applicable")}
+          >
+            <BanIcon className="size-4" />
+            <span className="hidden sm:inline">N/A</span>
           </Button>
         </div>
       </div>

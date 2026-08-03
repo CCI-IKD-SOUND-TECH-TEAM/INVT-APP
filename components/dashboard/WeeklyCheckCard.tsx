@@ -86,12 +86,17 @@ function CellBadge({
   } else if (session?.status === "completed") {
     const flagged =
       (session.missing_count ?? 0) > 0 || (session.shortfall_count ?? 0) > 0;
+    const partial = (session.unchecked_count ?? 0) > 0;
     tone = flagged
       ? "text-status-critical border-status-critical/40"
-      : "text-status-good border-status-good/40";
+      : partial
+        ? "text-status-caution border-status-caution/40"
+        : "text-status-good border-status-good/40";
     detail = flagged
       ? `${(session.missing_count ?? 0) + (session.shortfall_count ?? 0)} flagged`
-      : "Done";
+      : partial
+        ? `${session.unchecked_count} unchecked`
+        : "Done";
   }
 
   return (

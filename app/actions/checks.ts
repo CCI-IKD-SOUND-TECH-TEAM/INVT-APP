@@ -15,10 +15,11 @@ import type {
 
 /**
  * Weekly presence-check writes. A session is one walkthrough (department +
- * setup/set_down + week); entries upsert one row per item. Completion
- * validates full coverage, denormalizes summary counters onto the session,
- * writes an audit entry, and emails the team when anything is missing or
- * short — via `after()` so a slow mail send never blocks the response.
+ * setup/set_down + week); entries upsert one row per item. Completion does
+ * not require full coverage — never-marked items are recorded in
+ * unchecked_count. It denormalizes summary counters onto the session, writes
+ * an audit entry, and emails the team when anything is missing or short —
+ * via `after()` so a slow mail send never blocks the response.
  */
 
 export type CheckSessionResult =
@@ -185,8 +186,9 @@ export async function recordCheckEntry(input: {
   if (!item) return { error: "This item no longer exists." };
 
   const expected = item.quantity as number;
+  // Missing and n/a both mean nothing was counted.
   const seen =
-    input.result === "missing"
+    input.result === "missing" || input.result === "not_applicable"
       ? 0
       : Math.max(0, input.quantity_seen ?? expected);
 
@@ -272,9 +274,11 @@ export async function bulkMarkRemainingPresent(
 }
 
 /**
- * Complete a session: validate full coverage of the department's current
- * non-retired items, write summary counters, audit, and notify when anything
- * is missing or short.
+ * Complete a session: write summary counters (including how many of the
+ * department's current non-retired items were never marked), audit, and
+ * notify when anything is missing or short. Partial completion is allowed —
+ * unchecked items are counted, not rejected — but an entirely empty
+ * walkthrough is not (abandon is the way out of one).
  */
 export async function completeCheckSession(
   sessionId: string
@@ -296,21 +300,18 @@ export async function completeCheckSession(
   const entries = (entryRows ?? []).map(mapCheckEntry);
   const entryByItem = new Map(entries.map((e) => [e.item_id, e]));
   const unchecked = items.filter((it) => !entryByItem.has(it.id));
-  if (unchecked.length > 0) {
-    return {
-      error:
-        unchecked.length === 1
-          ? "1 item is still unchecked."
-          : `${unchecked.length} items are still unchecked.`,
-    };
+  if (entries.length === 0) {
+    return { error: "Nothing has been checked yet." };
   }
 
   const counters = {
-    total_items: entries.length,
+    total_items: entries.length + unchecked.length,
     present_count: entries.filter((e) => e.result === "present").length,
     missing_count: entries.filter((e) => e.result === "missing").length,
     issue_count: entries.filter((e) => e.result === "issue").length,
     shortfall_count: entries.filter(isShortfall).length,
+    na_count: entries.filter((e) => e.result === "not_applicable").length,
+    unchecked_count: unchecked.length,
   };
 
   const { error } = await supabase
@@ -336,7 +337,8 @@ export async function completeCheckSession(
     `${deptName} — ${label} check`,
     `Completed ${label.toLowerCase()} check: ${counters.present_count} present, ` +
       `${counters.missing_count} missing, ${counters.issue_count} with issues, ` +
-      `${counters.shortfall_count} short of ${counters.total_items} items.`
+      `${counters.shortfall_count} short, ${counters.na_count} N/A, ` +
+      `${counters.unchecked_count} unchecked of ${counters.total_items} items.`
   );
 
   if (counters.missing_count > 0 || counters.shortfall_count > 0) {

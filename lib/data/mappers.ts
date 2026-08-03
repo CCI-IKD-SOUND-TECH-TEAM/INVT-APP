@@ -69,6 +69,8 @@ export function mapCheckSession(
     missing_count: (row.missing_count as number | null) ?? null,
     issue_count: (row.issue_count as number | null) ?? null,
     shortfall_count: (row.shortfall_count as number | null) ?? null,
+    na_count: (row.na_count as number | null) ?? null,
+    unchecked_count: (row.unchecked_count as number | null) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     entries,
