@@ -10,7 +10,6 @@ const badgeVariants = cva(
     variants: {
       tone: {
         good: "bg-status-good-bg text-status-good",
-        info: "bg-status-info-bg text-status-info",
         caution: "bg-status-caution-bg text-status-caution",
         critical: "bg-status-critical-bg text-status-critical",
         neutral: "bg-status-neutral-bg text-status-neutral",

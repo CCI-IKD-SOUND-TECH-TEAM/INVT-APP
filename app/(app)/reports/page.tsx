@@ -435,10 +435,8 @@ export default function ReportsPage() {
         {REPORTS.map((r) => {
           const count = r.run(data, DEFAULT_FILTERS).rows.length;
           const tone =
-            r.id === "low-stock" || r.id === "defective-inventory"
-              ? count > 0
-                ? "text-status-caution"
-                : "text-status-good"
+            (r.id === "low-stock" || r.id === "defective-inventory") && count > 0
+              ? "text-status-caution"
               : "text-ink-muted";
           const Icon = r.icon;
           return (

@@ -127,13 +127,18 @@ Committed color strategy: a true-black stage with tonal-gray layering, and one s
 - **Bone Faint** (`#8A8A93`): Quiet caption text (KPI card footers, form hints, timestamps), placeholder text, and disabled text. Verified ≥4.5:1 against both `#000000` (~6.1:1) and the `#121214` card surface (~5.5:1) — this is the AA floor; do not go lighter/grayer for any text a user must read. (Was `#6B6B72` in an earlier revision — that measured ~3.97:1 on true black and failed AA for the caption copy it was applied to.)
 
 ### Semantic (status vocabulary — shared across item status, defect severity, defect status)
-- **Good / Available / Resolved** (`#34D399`): Available items, Resolved defects, Low severity.
-- **Active / In Use / Informational** (`#60A5FA`): In Use items, informational states.
+- **Good / Available / Resolved** (`#34D399`): Available items, Resolved defects. Glyphs and transient success confirmations only — see The Glyph-Only Rule.
 - **Caution / Under Repair** (`#F5A623`): Under Repair items and defects, Medium severity.
 - **Critical / Defective / Open / High** (`#FF3B3B`, same value as Signal Red): Defective items, Open defects, High severity — the accent doing double duty as both "act now" CTA color and "something's wrong" signal is intentional, not a collision.
 - **Neutral / Retired / Not Repairable** (text `#A3A3AC` on a `#71717A`-derived 16% tint): Retired items, Not Repairable defects — deliberately desaturated to read as "no longer active." The badge *text* uses Bone Muted (`#A3A3AC`) rather than `#71717A` directly; `#71717A` alone is only ~4.3:1 on true black and would fail AA, so it drives the background tint while Bone Muted carries the label.
 
+> **No blue.** An informational blue (`#60A5FA`) previously covered In Use items and in-progress checks. It was the fifth hue competing on a single screen and only ever labelled transient states, which read fine by glyph shape. It has been removed from the palette — do not reintroduce it. In-progress states use a distinct glyph (a progress ring or dashed circle) on neutral ink.
+
 ### Named Rules
+**The Glyph-Only Rule.** Semantic hue lives on a ≤16px glyph or a 6px dot — never on body text, never on a numeral, never on a background fill. A KPI value, a count, a status word, and a table cell all render in Bone or Bone Muted regardless of the state they describe; the glyph beside them carries the tone. Two exceptions: (1) the **needs-attention** tone (critical, and caution where it means "act soon") may take a tinted fill, capped at one tinted element per card; (2) **transient confirmations** — toasts, post-submit alerts, import result panels — may use colored text, because they are momentary and disappear.
+
+**The Resting-Normal Rule.** A state that is simply *fine* gets no hue at all. Available, Present, In Use, Resolved, and Low severity are the expected condition of the system — coloring them means the eye must sort green from amber from red before it finds the actual problem. Good green survives only on glyphs and transient confirmations (above); everywhere else, resting-normal is Bone Muted or Bone Faint.
+
 **The One Voice Rule.** Signal Red is the only saturated color with a subjective "brand" role. Every other color in the system is either a neutral gray-black step or a desaturated semantic (status) color. If a screen needs a second "loud" color, the answer is to use Signal Red more precisely, not to add a second accent.
 
 **The No-Shadow Rule.** Depth comes from surface lightness steps (`Black → Char Surface → Char Surface Raised`) plus 1px borders, never from `box-shadow` blur — blur is invisible against true black and reads as a bug, not elevation.
@@ -178,9 +183,9 @@ Flat-by-default, tonal-layered system — no drop shadows anywhere in the restin
 
 ### Status Badges (signature component)
 - **Style:** Fully rounded (`999px`) **outlined** pill — transparent fill, 1px `Line` (`#2A2A2E`) border, `4px 10px` padding (a hair tighter on the left for the icon). A leading **solid, tone-colored status icon** carries the semantic color; the **text label is neutral Bone** (`#F5F5F4`), sentence-case (the status string as written — "In Use", "Under Repair"), Lato 500. Color lives in the icon, not the whole chip — so a table of statuses stays calm and the badges never compete with the Primary button's full-saturation Signal Red.
-- **Icon language:** one glyph per state, colored from the shared Section 2 palette — `CheckCircle` (good: Available, Resolved), `PlayCircle` (info: In Use), `ExclamationCircle` (critical: Defective, Open), `MinusCircle` / `XCircle` (neutral: Retired / Not Repairable). The single in-progress state, **Under Repair**, uses a spinning `ArrowPath` (caution amber) to signal active work — every other glyph is static. The word names the state, so color is never the only indicator (WCAG 1.4.1).
+- **Icon language:** one glyph per state, colored from the shared Section 2 palette — `CheckCircle` (good: Available, Resolved), `PlayCircle` (neutral: In Use — a filled dot, distinguished from Retired's minus by *shape*, not hue), `ExclamationCircle` (critical: Defective, Open), `MinusCircle` / `XCircle` (neutral: Retired / Not Repairable). The single in-progress state, **Under Repair**, uses a spinning `ArrowPath` (caution amber) to signal active work — every other glyph is static. The word names the state, so color is never the only indicator (WCAG 1.4.1).
 - **States:** One badge per status value (Available, In Use, Defective, Under Repair, Retired // Open, Resolved, Not Repairable). The icon + color mapping is identical everywhere a status appears — dashboard, listing table, detail view.
-- **Severity is not a badge.** Low / Medium / High render as **quiet colored text** (`SeverityLabel`), same shared palette (Low = good, Medium = caution, High = critical), no pill. Status is the state a user acts on and gets the badge; severity is a supporting attribute and sits back a weight, so a defect row shows one pill, not two competing ones.
+- **Severity is not a badge.** Low / Medium / High render as **quiet text** (`SeverityLabel`), no pill. Low is resting-normal and takes Bone Faint; only Medium (caution) and High (critical) carry hue, so a defect list is a two-colour ramp against gray rather than a three-colour one. Status is the state a user acts on and gets the badge; severity is a supporting attribute and sits back a weight, so a defect row shows one pill, not two competing ones.
 
 ### Cards / Containers (Dashboard widgets, list rows as cards on mobile)
 - **Corner Style:** `14px` radius (`{rounded.lg}`).
@@ -219,4 +224,7 @@ A vertical timeline in the Defect detail view: each status change (Open → Unde
 - **Don't** apply drop-shadow blur to cards or panels at rest — it's invisible on true black and reads as a bug.
 - **Don't** use `border-left`/`border-right` color stripes as a status or navigation-active indicator — use a filled dot, icon, or full badge instead.
 - **Don't** add a second saturated accent color alongside Signal Red — desaturated semantic status colors are the only exception, and they're capped at moderate saturation by design.
+- **Don't** color a numeral. KPI values, defect counts, and session stats stay Bone; the tone rides on a glyph or dot beside them.
+- **Don't** color both the container and its content. If a card has a tinted icon chip, its value is neutral — one tinted element per card.
+- **Don't** spend Signal Red on tertiary "see more" links. Those are Bone Muted with a `hover:text-brand`; red belongs to the primary button and to genuine alerts.
 - **Don't** set body or label text lighter/grayer than `#6B6B72` — it will fail contrast against both the black canvas and the `#121214` surface step.

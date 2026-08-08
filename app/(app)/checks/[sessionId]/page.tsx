@@ -459,7 +459,7 @@ function SummaryView({ session }: { session: CheckSession }) {
       {session.status === "completed" && (
         <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border border-border bg-card p-4 text-sm">
           <Stat label="Items" value={session.total_items ?? 0} />
-          <Stat label="Present" value={session.present_count ?? 0} tone="text-status-good" />
+          <Stat label="Present" value={session.present_count ?? 0} />
           <Stat
             label="Missing"
             value={session.missing_count ?? 0}

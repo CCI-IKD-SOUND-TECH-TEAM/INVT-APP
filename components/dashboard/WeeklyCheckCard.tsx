@@ -47,7 +47,7 @@ export default function WeeklyCheckCard() {
         </div>
         <Link
           href="/checks"
-          className="shrink-0 text-[0.8125rem] font-bold text-brand hover:text-brand-deep"
+          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
         >
           Open Checks
         </Link>
@@ -104,7 +104,7 @@ function cellState(session: CheckSession | undefined): CellState {
   if (session?.status === "in_progress") {
     return {
       icon: ProgressIcon,
-      tone: "text-status-info",
+      tone: "text-status-neutral",
       short: "Active",
       full: "In progress",
     };

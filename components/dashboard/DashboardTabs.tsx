@@ -84,7 +84,7 @@ export default function DashboardTabs({
           </TabsList>
           <Link
             href="/reports"
-            className="text-[0.8125rem] font-bold text-brand hover:text-brand-deep"
+            className="text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
           >
             View All
           </Link>

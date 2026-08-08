@@ -51,12 +51,9 @@ function KpiCard({
           <Icon className="size-[17px]" />
         </span>
       </div>
-      <span
-        className={cn(
-          "font-display text-[clamp(2rem,6cqi,2.75rem)] leading-none tabular-nums",
-          tone === "critical" && "text-brand"
-        )}
-      >
+      {/* The tinted icon chip already carries the tone — colouring the numeral
+          too meant one card spent two colour slots on the same signal. */}
+      <span className="font-display text-[clamp(2rem,6cqi,2.75rem)] leading-none tabular-nums">
         {value}
       </span>
       <span className="text-[0.8125rem] text-ink-faint">{foot}</span>

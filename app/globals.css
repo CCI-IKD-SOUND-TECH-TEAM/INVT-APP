@@ -31,8 +31,9 @@
   /* Semantic status vocabulary — shared by item status + defect severity/status */
   --status-good: #34d399;
   --status-good-bg: rgba(52, 211, 153, 0.14);
-  --status-info: #60a5fa;
-  --status-info-bg: rgba(96, 165, 250, 0.14);
+  /* No --status-info. Blue was the fifth hue on screen and only ever labelled
+     transient states (In Use, In progress) that read fine by glyph shape.
+     In-progress now uses a distinct glyph on neutral ink. */
   --status-caution: #f5a623;
   --status-caution-bg: rgba(245, 166, 35, 0.14);
   --status-critical: #ff3b3b;
@@ -131,8 +132,6 @@
 
   --color-status-good: var(--status-good);
   --color-status-good-bg: var(--status-good-bg);
-  --color-status-info: var(--status-info);
-  --color-status-info-bg: var(--status-info-bg);
   --color-status-caution: var(--status-caution);
   --color-status-caution-bg: var(--status-caution-bg);
   --color-status-critical: var(--status-critical);

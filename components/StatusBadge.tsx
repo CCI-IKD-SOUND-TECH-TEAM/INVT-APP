@@ -11,11 +11,10 @@ import type { DefectStatus, ItemStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Status = ItemStatus | DefectStatus;
-type Tone = "good" | "info" | "caution" | "critical" | "neutral";
+type Tone = "good" | "caution" | "critical" | "neutral";
 
 const TONE_TEXT: Record<Tone, string> = {
   good: "text-status-good",
-  info: "text-status-info",
   caution: "text-status-caution",
   critical: "text-status-critical",
   neutral: "text-status-neutral",
@@ -26,7 +25,9 @@ const CONFIG: Record<
   { tone: Tone; icon: ComponentType<{ className?: string }>; spin?: boolean }
 > = {
   Available: { tone: "good", icon: CheckCircleIcon },
-  "In Use": { tone: "info", icon: PlayCircleIcon },
+  /* In Use is a resting-normal state, so it reads by glyph (a filled dot,
+     vs Retired's minus) rather than by hue — see DESIGN.md "no blue". */
+  "In Use": { tone: "neutral", icon: PlayCircleIcon },
   Defective: { tone: "critical", icon: ExclamationCircleIcon },
   "Under Repair": { tone: "caution", icon: ArrowPathIcon, spin: true },
   Retired: { tone: "neutral", icon: MinusCircleIcon },

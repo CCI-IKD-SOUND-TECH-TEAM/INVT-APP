@@ -90,7 +90,7 @@ export default function CheckItemRow({
                   lostSinceSetup
                     ? "text-status-critical"
                     : setupNote === "present at setup"
-                      ? "text-status-good/80"
+                      ? "text-ink-faint"
                       : "text-status-caution"
                 )}
               >

@@ -120,12 +120,6 @@ export default function AppSidebar() {
                       <span className="group-data-[collapsible=icon]:hidden">
                         {item.label}
                       </span>
-                      <span
-                        className={cn(
-                          "ml-auto size-1.5 rounded-full bg-brand transition-opacity duration-150 group-data-[collapsible=icon]:hidden",
-                          active ? "opacity-100" : "opacity-0"
-                        )}
-                      />
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

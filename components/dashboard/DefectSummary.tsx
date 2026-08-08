@@ -11,15 +11,21 @@ export interface DefectCounts {
   "Not Repairable": number;
 }
 
-const CELL: Record<keyof DefectCounts, { tone: string; href: string }> = {
-  Open: { tone: "text-status-critical", href: "/defects?status=Open" },
+/**
+ * `dot` is the only colour in a cell — the count itself always renders in
+ * neutral ink. Colouring all four numerals turned this 2×2 into a rainbow;
+ * now the two states that need action carry a small marker and the rest sit
+ * back. `null` means no marker at all.
+ */
+const CELL: Record<keyof DefectCounts, { dot: string | null; href: string }> = {
+  Open: { dot: "bg-status-critical", href: "/defects?status=Open" },
   "Under Repair": {
-    tone: "text-status-caution",
+    dot: "bg-status-caution",
     href: "/defects?status=Under%20Repair",
   },
-  Resolved: { tone: "text-status-good", href: "/defects?status=Resolved" },
+  Resolved: { dot: null, href: "/defects?status=Resolved" },
   "Not Repairable": {
-    tone: "text-status-neutral",
+    dot: null,
     href: "/defects?status=Not%20Repairable",
   },
 };
@@ -38,7 +44,7 @@ export default function DefectSummary({ counts }: { counts: DefectCounts }) {
         </div>
         <Link
           href="/defects"
-          className="shrink-0 text-[0.8125rem] font-bold text-brand hover:text-brand-deep"
+          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
         >
           View All
         </Link>
@@ -55,12 +61,23 @@ export default function DefectSummary({ counts }: { counts: DefectCounts }) {
               <span
                 className={cn(
                   "font-display text-2xl leading-none tabular-nums",
-                  zero ? "text-ink-faint" : CELL[key].tone
+                  zero ? "text-ink-faint" : "text-foreground"
                 )}
               >
                 {counts[key]}
               </span>
-              <span className="text-xs text-muted-foreground">{key}</span>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {CELL[key].dot && !zero && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      CELL[key].dot
+                    )}
+                  />
+                )}
+                {key}
+              </span>
             </Link>
           );
         })}

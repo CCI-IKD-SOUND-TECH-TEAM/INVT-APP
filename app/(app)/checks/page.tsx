@@ -300,8 +300,8 @@ function ChecksContent() {
               ) : (
                 <div className="flex max-w-4xl flex-col gap-3">
                   {next === null && (
-                    <p className="flex items-center gap-2 text-sm text-status-good">
-                      <CheckCircleIcon className="size-4 shrink-0" />
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircleIcon className="size-4 shrink-0 text-status-good" />
                       All done for this week.
                     </p>
                   )}
@@ -323,7 +323,9 @@ function ChecksContent() {
                               aria-hidden
                               className={cn(
                                 "ml-[19.5px] h-5 w-px",
-                                setupDone ? "bg-status-good/50" : "bg-border"
+                                /* Done vs pending reads as a lightness step,
+                                   not a hue — the step avatars carry state. */
+                                setupDone ? "bg-border" : "bg-line-subtle"
                               )}
                             />
                           )}
@@ -333,12 +335,14 @@ function ChecksContent() {
                               className={cn(
                                 "flex size-10 shrink-0 items-center justify-center rounded-full",
                                 !session && "border border-border text-ink-faint",
+                                /* Only the needs-attention state earns a tinted
+                                   fill; the rest put their hue on the glyph. */
                                 session?.status === "in_progress" &&
-                                  "bg-status-caution/15 text-status-caution",
+                                  "bg-secondary text-status-caution",
                                 session?.status === "completed" &&
                                   (missing
                                     ? "bg-status-critical/15 text-status-critical"
-                                    : "bg-status-good/15 text-status-good")
+                                    : "bg-secondary text-status-good")
                               )}
                             >
                               <TypeIcon className="size-5" />
