@@ -211,7 +211,10 @@ function ChecksContent() {
         className="gap-6"
         data-tour="start-check"
       >
-        <TabsList>
+        {/* Three department tabs can exceed 390px; let them scroll rather
+            than widen the page. Bleeds to the edges so the last tab clears
+            the page padding. */}
+        <TabsList className="-mx-4 max-w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:max-w-none md:px-0 [&::-webkit-scrollbar]:hidden">
           {departments.map((deptName) => {
             const deptId = departmentIdByName(deptName);
             const count = deptId ? (checkableCount.get(deptId) ?? 0) : 0;
@@ -302,7 +305,7 @@ function ChecksContent() {
                       All done for this week.
                     </p>
                   )}
-                  <Card className="gap-0 p-5">
+                  <Card className="gap-0 p-3.5 md:p-5">
                     {CHECK_TYPES.map((type, i) => {
                       const session = thisWeekSession(deptId, type);
                       const key = `${deptName}:${type}`;
@@ -341,14 +344,17 @@ function ChecksContent() {
                               <TypeIcon className="size-5" />
                             </span>
 
-                            <div className="flex w-36 shrink-0 flex-col gap-0.5">
+                            {/* 144px fixed + shrink-0 blew past a 390px
+                                viewport; below sm: it takes the rest of the
+                                row and the status line wraps beneath. */}
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:w-36 sm:flex-none sm:shrink-0">
                               <h3 className="h-title">{label}</h3>
                               <span className="text-xs text-muted-foreground">
                                 {CHECK_TYPE_HINT[type]}
                               </span>
                             </div>
 
-                            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                            <div className="flex w-full min-w-0 items-center gap-2.5 sm:w-auto sm:flex-1">
                               {!session && (
                                 <span className="text-sm text-ink-faint">
                                   Not started
@@ -363,7 +369,7 @@ function ChecksContent() {
                                     value={
                                       (session.entries.length / total) * 100
                                     }
-                                    className="w-32 shrink-0"
+                                    className="min-w-0 flex-1 sm:w-32 sm:flex-none sm:shrink-0"
                                   />
                                 </>
                               )}

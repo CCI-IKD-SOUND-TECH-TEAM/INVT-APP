@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Design reference bundles, not app source — they ship a vendored
+    // prototype runtime that does not meet the app's lint rules.
+    "design_handoff_mobile_inventory/**",
+    ".design-refs/**",
   ]),
 ]);
 

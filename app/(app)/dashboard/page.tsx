@@ -89,10 +89,16 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <p className="text-muted-foreground">
-          An overview of every asset, defect, and repair in flight.
-        </p>
-        <Button asChild>
+        <div>
+          {/* Below md: the shared SiteHeader is hidden, so the page carries its
+              own title — and the tab bar's centre button is "Log a defect". */}
+          <p className="h-label md:hidden">Ikorodu · Media Team</p>
+          <h1 className="h-headline md:hidden">Dashboard</h1>
+          <p className="mt-1.5 text-muted-foreground md:mt-0">
+            An overview of every asset, defect, and repair in flight.
+          </p>
+        </div>
+        <Button asChild className="hidden md:inline-flex">
           <Link href="/defects?log=1">
             <PlusIcon className="size-4" /> Log a defect
           </Link>
@@ -109,7 +115,12 @@ export default function DashboardPage() {
       />
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <DashboardTabs activity={activity} lowStockItems={lowStockItems} />
+        {/* Stacked on mobile the dated task outranks the activity feed, so the
+            right-hand column comes first below lg:. Matches handoff screen 2a:
+            counts → weekly check → defects → activity. */}
+        <div className="order-last lg:order-none">
+          <DashboardTabs activity={activity} lowStockItems={lowStockItems} />
+        </div>
 
         <div className="flex flex-col gap-4">
           <WeeklyCheckCard />

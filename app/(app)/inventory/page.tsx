@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { IconArchive as ArchiveBoxArrowDownIcon, IconDownload as ArrowDownTrayIcon, IconUpload as ArrowUpTrayIcon, IconCheck as CheckIcon, IconChevronDown as ChevronDownIcon, IconAlertTriangle as ExclamationTriangleIcon, IconFilter as FunnelIcon, IconList as ListBulletIcon, IconSearch as MagnifyingGlassIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconLayoutGrid as Squares2X2Icon } from "@tabler/icons-react";
+import ItemCardList, { StatusChips } from "@/components/inventory/ItemCardList";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "table" | "grid";
@@ -368,6 +369,9 @@ function InventoryContent() {
     (clampedPage - 1) * PAGE_SIZE,
     clampedPage * PAGE_SIZE
   );
+  // Mobile accumulates instead of paging ("Load 20 more"), so it shows every
+  // page up to the current one rather than just the current slice.
+  const mobileItems = filtered.slice(0, clampedPage * PAGE_SIZE);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) {
@@ -426,7 +430,14 @@ function InventoryContent() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="secondary" onClick={() => setBulkOpen(true)}>
+          {/* Bulk import is a desk task — it needs a file picker and a wide
+              results table, so it stays off the phone. */}
+          <Button
+            type="button"
+            variant="secondary"
+            className="hidden md:inline-flex"
+            onClick={() => setBulkOpen(true)}
+          >
             <ArrowUpTrayIcon className="size-4" /> Bulk Import
           </Button>
           <Button asChild>
@@ -459,7 +470,7 @@ function InventoryContent() {
           )}
           <ChevronDownIcon className="size-3.5" />
         </Button>
-        <label className="ml-1 flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+        <label className="ml-1 hidden items-center gap-2 text-[0.8125rem] text-muted-foreground md:flex">
           <Checkbox
             checked={includeRetired}
             onCheckedChange={(v) => {
@@ -470,7 +481,7 @@ function InventoryContent() {
           Include Retired Items
         </label>
 
-        <div className="ml-auto flex shrink-0 gap-0.5 rounded-md border border-border bg-surface-sunken p-0.5">
+        <div className="ml-auto hidden shrink-0 gap-0.5 rounded-md border border-border bg-surface-sunken p-0.5 md:flex">
           <button
             type="button"
             aria-label="Table view"
@@ -560,10 +571,44 @@ function InventoryContent() {
         </div>
       )}
 
+      {/* Single-select status chips stand in for the filter panel on mobile.
+          They drive the same statusFilter set the panel does. */}
+      <StatusChips
+        className="md:hidden"
+        items={items}
+        statusFilter={statusFilter}
+        onSelect={(status) => {
+          setStatusFilter(status === null ? new Set() : new Set([status]));
+          if (status === "Retired") setIncludeRetired(true);
+          setPage(1);
+        }}
+      />
+
       {totalPages > 1 && (
-        <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
+        <div className="hidden md:block">
+          <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
+        </div>
       )}
 
+      <ItemCardList
+        className="md:hidden"
+        items={mobileItems}
+        categoryName={categoryName}
+        highlightId={highlightId}
+      />
+
+      {clampedPage < totalPages && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full text-muted-foreground md:hidden"
+          onClick={() => setPage(clampedPage + 1)}
+        >
+          Load {Math.min(PAGE_SIZE, filtered.length - mobileItems.length)} more
+        </Button>
+      )}
+
+      <div className="hidden md:block">
       {view === "table" ? (
         <div className="overflow-hidden rounded-lg border border-border">
           <Table className="min-w-[860px]">
@@ -710,9 +755,12 @@ function InventoryContent() {
           </Button>
         </div>
       )}
+      </div>
 
       {filtered.length > 0 && (
-        <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
+        <div className="hidden md:block">
+          <Pager page={clampedPage} totalPages={totalPages} onChange={setPage} />
+        </div>
       )}
 
       {retireTarget && (

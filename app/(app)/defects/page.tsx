@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store";
 import type { Defect, DefectSeverity, InventoryItem } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import SeverityLabel from "@/components/SeverityLabel";
+import DefectCardList from "@/components/defects/DefectCardList";
 import Modal from "@/components/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,7 +124,21 @@ function DefectLogContent() {
         </TabsList>
       </Tabs>
 
-      <div className="overflow-hidden rounded-lg border border-border">
+      <DefectCardList
+        className="md:hidden"
+        defects={visible}
+        getItem={getItem}
+        categoryName={categoryName}
+        daysOpen={daysOpen}
+        onSelect={setSelectedId}
+        emptyMessage={
+          tab === "open"
+            ? "No open defects right now — nice work."
+            : "No defects logged yet."
+        }
+      />
+
+      <div className="hidden overflow-hidden rounded-lg border border-border md:block">
         <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">

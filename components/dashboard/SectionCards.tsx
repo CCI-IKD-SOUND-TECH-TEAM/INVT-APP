@@ -36,20 +36,27 @@ function KpiCard({
   return (
     <Link
       href={href}
-      className="@container/card group flex flex-col gap-3 rounded-lg border border-border bg-card p-5 transition-[border-color,transform] duration-150 ease-out hover:-translate-y-0.5 hover:border-brand/40"
+      className="@container/card group flex flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-[border-color,transform] duration-150 ease-out hover:-translate-y-0.5 hover:border-brand/40 md:p-5"
     >
       <div className="flex items-center justify-between">
         <span className="h-label">{label}</span>
+        {/* Two-up at 390px leaves no room beside the label — the icon is a
+            desktop affordance, and the tone still reads from the value. */}
         <span
           className={cn(
-            "flex size-[34px] shrink-0 items-center justify-center rounded-sm",
+            "hidden size-[34px] shrink-0 items-center justify-center rounded-sm md:flex",
             TONE_CLASS[tone]
           )}
         >
           <Icon className="size-[17px]" />
         </span>
       </div>
-      <span className="font-display text-[clamp(2rem,6cqi,2.75rem)] leading-none tabular-nums">
+      <span
+        className={cn(
+          "font-display text-[clamp(2rem,6cqi,2.75rem)] leading-none tabular-nums",
+          tone === "critical" && "text-brand"
+        )}
+      >
         {value}
       </span>
       <span className="text-[0.8125rem] text-ink-faint">{foot}</span>
@@ -66,7 +73,7 @@ export interface KpiData {
 
 export default function SectionCards({ data }: { data: KpiData }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-[repeat(auto-fit,minmax(210px,1fr))] md:gap-4">
       <KpiCard
         href="/inventory"
         label="Total Assets"
