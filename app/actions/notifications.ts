@@ -17,7 +17,7 @@ import type { CheckType, DefectSeverity } from "@/lib/types";
  *
  * FIRE-AND-FORGET, deliberately. Every function here swallows its errors: a
  * defect must still get logged when email is down or misconfigured. Callers in
- * lib/store.tsx invoke these without awaiting the result, so a slow mail send
+ * Callers invoke these without awaiting the result, so a slow mail send
  * never blocks the UI either.
  */
 

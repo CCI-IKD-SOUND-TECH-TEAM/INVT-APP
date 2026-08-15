@@ -10,8 +10,8 @@ import type { CheckEntry, CheckSession } from "@/lib/types";
 /**
  * Check session reads.
  *
- * Entry-loading policy is carried over from getStoreData(): entries are only
- * needed where the UI reads per-item detail — resumable (in-progress) sessions
+ * Entry-loading policy is carried over from the old full-table read: entries
+ * are only needed where the UI reads per-item detail — resumable (in-progress) sessions
  * and current-week sessions. Older completed sessions render from their summary
  * counters alone.
  */

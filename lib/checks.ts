@@ -12,6 +12,11 @@ import type { CheckEntry, CheckType } from "@/lib/types";
  * Sunday-start matches the service rhythm: the Sunday setup is the first
  * check of the week. Must stay in sync with check_sessions.week_start.
  */
+/** Today as `YYYY-MM-DD` — the default for date inputs and export filenames. */
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function weekStartIso(d: Date = new Date()): string {
   return format(startOfWeek(d, { weekStartsOn: 0 }), "yyyy-MM-dd");
 }

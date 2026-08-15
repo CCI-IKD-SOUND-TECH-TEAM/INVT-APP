@@ -3,8 +3,8 @@
  *
  * Lives under /login/* because that is the only path the auth proxy lets
  * through without a session. Mounts the REAL page components inside the real
- * StoreProvider + AppShell against a fixture, so overflow measured here is
- * overflow the signed-in app would have.
+ * AppShell, with the query cache pre-seeded from a fixture, so overflow
+ * measured here is overflow the signed-in app would have.
  *
  *   /login/preview?screen=checks
  */
@@ -13,9 +13,8 @@
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import { StoreProvider } from "@/lib/store";
 import { SessionProvider } from "@/lib/session";
-import { CURRENT_USER, SEED } from "./fixture";
+import { CURRENT_USER } from "./fixture";
 import { usePreviewCache } from "./seed-cache";
 
 // Migrated screens are mounted as their client half — the `page.tsx` above
@@ -91,12 +90,10 @@ function PreviewInner() {
 
   return (
     <SessionProvider currentUser={CURRENT_USER}>
-      <StoreProvider seed={SEED}>
-        <OverflowProbe />
-        <AppShell>
-          <Screen />
-        </AppShell>
-      </StoreProvider>
+      <OverflowProbe />
+      <AppShell>
+        <Screen />
+      </AppShell>
     </SessionProvider>
   );
 }

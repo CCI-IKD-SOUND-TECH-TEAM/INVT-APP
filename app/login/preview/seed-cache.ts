@@ -3,16 +3,24 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
   activityQuery,
+  checkSessionQuery,
   checksQuery,
   dashboardQuery,
+  defectsQuery,
+  departmentItemCountsQuery,
+  itemOptionsQuery,
   itemStatusCountsQuery,
+  itemsByDepartmentQuery,
   itemsQuery,
   referenceQuery,
+  reportsQuery,
+  taxonomyUsageQuery,
 } from "@/lib/queries";
 import { ITEMS_PAGE_SIZE } from "@/lib/queries/keys";
 import { isLowStock } from "@/lib/inventory";
 import type {
   DashboardStats,
+  DefectWithItem,
   ItemListRow,
   ItemStatusCounts,
   LowStockItem,
@@ -49,13 +57,74 @@ export function usePreviewCache() {
   // Only this key is seeded — filtering or paging in the harness falls through
   // to the real endpoint, which is unauthenticated here and will bounce.
   const rows = buildRows();
+  // Everything except /reports reads a retired-excluded list server-side.
+  const activeRows = rows.filter((r) => r.status !== "Retired");
   queryClient.setQueryData(itemsQuery({ page: 1 }).queryKey, {
-    rows: rows.slice(0, ITEMS_PAGE_SIZE),
-    total: rows.length,
+    rows: activeRows.slice(0, ITEMS_PAGE_SIZE),
+    total: activeRows.length,
     page: 1,
     pageSize: ITEMS_PAGE_SIZE,
   });
   queryClient.setQueryData(itemStatusCountsQuery().queryKey, buildCounts());
+  queryClient.setQueryData(
+    itemOptionsQuery().queryKey,
+    activeRows.map((r) => ({ id: r.id, item_name: r.item_name }))
+  );
+
+  // Defects carry the item name from the join in the real endpoint.
+  const defects = buildDefects();
+  queryClient.setQueryData(defectsQuery().queryKey, defects);
+
+  // Checks: the list page reads 12 weeks, and each session is also cached
+  // individually for the walkthrough screen.
+  queryClient.setQueryData(checksQuery(12).queryKey, SEED.checkSessions);
+  for (const session of SEED.checkSessions) {
+    queryClient.setQueryData(checkSessionQuery(session.id).queryKey, session);
+    queryClient.setQueryData(
+      itemsByDepartmentQuery(session.department_id).queryKey,
+      activeRows.filter((r) => r.department_id === session.department_id)
+    );
+  }
+
+  queryClient.setQueryData(
+    departmentItemCountsQuery().queryKey,
+    SEED.departments.reduce<Record<string, number>>((acc, d) => {
+      acc[d.id] = activeRows.filter((r) => r.department_id === d.id).length;
+      return acc;
+    }, {})
+  );
+
+  queryClient.setQueryData(taxonomyUsageQuery().queryKey, {
+    categories: SEED.categories.reduce<Record<string, number>>((acc, c) => {
+      acc[c.name] = SEED.items.filter((i) => i.category_id === c.id).length;
+      return acc;
+    }, {}),
+    units: SEED.units.reduce<Record<string, number>>((acc, unit) => {
+      acc[unit] = SEED.items.filter((i) => i.unit_of_measure === unit).length;
+      return acc;
+    }, {}),
+  });
+
+  queryClient.setQueryData(reportsQuery().queryKey, {
+    items: rows,
+    defects,
+    activity: SEED.activity,
+    totalItems: rows.length,
+    truncated: false,
+  });
+}
+
+/** Fixture defects with the item name the real query joins on. */
+function buildDefects(): DefectWithItem[] {
+  const itemById = new Map(SEED.items.map((i) => [i.id, i]));
+  return SEED.defects.map((d) => {
+    const item = itemById.get(d.item_id);
+    return {
+      ...d,
+      item_name: item?.item_name ?? "Unknown item",
+      category_id: item?.category_id ?? "",
+    };
+  });
 }
 
 /** Fixture InventoryItems projected into the list-view row shape. */
@@ -64,8 +133,7 @@ function buildRows(): ItemListRow[] {
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
   const departmentName = new Map(departments.map((d) => [d.id, d.name]));
 
-  return items
-    .filter((i) => i.status !== "Retired")
+  return [...items]
     .sort((a, b) => a.item_name.localeCompare(b.item_name))
     .map((i) => ({
       id: i.id,

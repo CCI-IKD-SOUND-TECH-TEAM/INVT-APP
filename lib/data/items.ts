@@ -161,31 +161,6 @@ export async function getItemsByDepartment(
   return (data ?? []) as ItemListRow[];
 }
 
-/** Settings shows how many items would be orphaned by deleting a taxonomy row. */
-export async function getItemCountByCategory(
-  categoryId: string
-): Promise<number> {
-  const supabase = createClient(await cookies());
-  const { count, error } = await supabase
-    .from("inventory_items")
-    .select("*", { count: "exact", head: true })
-    .eq("category_id", categoryId);
-
-  if (error) throw new Error(`getItemCountByCategory failed: ${error.message}`);
-  return count ?? 0;
-}
-
-export async function getItemCountByUnit(unit: string): Promise<number> {
-  const supabase = createClient(await cookies());
-  const { count, error } = await supabase
-    .from("inventory_items")
-    .select("*", { count: "exact", head: true })
-    .eq("unit_of_measure", unit);
-
-  if (error) throw new Error(`getItemCountByUnit failed: ${error.message}`);
-  return count ?? 0;
-}
-
 /**
  * Id + name for every non-retired item, for the pickers.
  *

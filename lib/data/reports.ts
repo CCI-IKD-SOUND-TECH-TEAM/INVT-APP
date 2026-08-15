@@ -18,9 +18,6 @@ import type { ItemListRow, ReportsDataset } from "@/lib/api-types";
  * via the layout. That is the actual win here, not payload size.
  */
 
-/** Rows above this are dropped by PostgREST's `max_rows` (supabase/config.toml). */
-const ROW_CEILING = 1000;
-
 export async function getReportsDataset(): Promise<ReportsDataset> {
   const supabase = createClient(await cookies());
 
@@ -54,5 +51,3 @@ export async function getReportsDataset(): Promise<ReportsDataset> {
 
   return { items, defects, activity, totalItems: total, truncated };
 }
-
-export { ROW_CEILING };

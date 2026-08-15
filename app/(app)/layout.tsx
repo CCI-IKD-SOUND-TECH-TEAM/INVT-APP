@@ -8,10 +8,9 @@ import type { SessionUser } from "@/lib/types";
 /**
  * The shell, and the identity it needs — nothing more.
  *
- * This layout used to await getStoreData(), which fetched every row of every
- * domain table before any route could paint. That fetch now lives in
- * components/StoreShell.tsx and is mounted only by the routes still reading the
- * client store; migrated routes prefetch their own queries instead.
+ * This layout used to fetch every row of every domain table before any route
+ * could paint, and hand it to a client store. Each route now prefetches only
+ * the queries it renders (see the page.tsx beside each client component).
  */
 export default async function AppGroupLayout({
   children,

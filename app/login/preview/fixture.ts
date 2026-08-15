@@ -1,7 +1,7 @@
 /** TEMPORARY verification fixture — delete with the preview route. */
 import { weekStartIso } from "@/lib/checks";
-import type { StoreSeed } from "@/lib/store";
 import type {
+  AuditEntry,
   Category,
   CheckSession,
   Defect,
@@ -10,6 +10,26 @@ import type {
   Profile,
   SessionUser,
 } from "@/lib/types";
+
+/**
+ * Shape of the preview fixture.
+ *
+ * Declared here rather than imported: it used to be `StoreSeed` from
+ * lib/store.tsx, which no longer exists. The harness now seeds the query cache
+ * (./seed-cache.ts) instead of a client store.
+ */
+export interface PreviewSeed {
+  items: InventoryItem[];
+  defects: Defect[];
+  activity: AuditEntry[];
+  categories: Category[];
+  departments: Department[];
+  units: string[];
+  profiles: Profile[];
+  checkSessions: CheckSession[];
+  /** item_id -> last time the item was seen in a check. */
+  lastConfirmed: Record<string, string>;
+}
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
@@ -158,7 +178,7 @@ export const CURRENT_USER: SessionUser = {
   email: "jeffowoloko@gmail.com",
 };
 
-export const SEED: StoreSeed = {
+export const SEED: PreviewSeed = {
   items: ITEMS,
   defects: DEFECTS,
   activity: [

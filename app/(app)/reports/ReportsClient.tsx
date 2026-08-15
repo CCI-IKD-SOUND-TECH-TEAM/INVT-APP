@@ -4,7 +4,7 @@ import { useMemo, useState, type ComponentProps, type ComponentType, type SVGPro
 import { useQuery } from "@tanstack/react-query";
 import { reportsQuery } from "@/lib/queries";
 import { useReference } from "@/lib/queries/use-reference";
-import { todayIso } from "@/lib/store";
+import { todayIso } from "@/lib/checks";
 import { isLowStock } from "@/lib/inventory";
 import type { DefectWithItem, ItemListRow } from "@/lib/api-types";
 import type { AuditEntry, Defect, DefectSeverity } from "@/lib/types";

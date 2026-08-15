@@ -86,9 +86,6 @@ export const queryKeys = {
     options: () => ["items", "options"] as const,
     departmentCounts: () => ["items", "department-counts"] as const,
     statusCounts: () => ["items", "status-counts"] as const,
-    countByCategory: (categoryId: string) =>
-      ["items", "count", "category", categoryId] as const,
-    countByUnit: (unit: string) => ["items", "count", "unit", unit] as const,
   },
 
   defects: {

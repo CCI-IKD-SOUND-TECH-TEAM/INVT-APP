@@ -6,10 +6,10 @@ import type { SessionUser } from "@/lib/types";
 /**
  * The signed-in staff member, and nothing else.
  *
- * Split out of the store so the app shell — sidebar avatar, tour persistence
- * keys — can identify the user without the store being mounted above it. That
- * is what lets StoreProvider move down to the routes that still need it, and
- * lets the layout stop fetching the whole database for routes that don't.
+ * Split out of the old client store so the app shell — sidebar avatar, tour
+ * persistence keys — can identify the user without a data provider above it.
+ * That is what let the layout stop fetching the whole database on every
+ * navigation.
  *
  * Resolved server-side in app/(app)/layout.tsx from the verified JWT claims,
  * so it is one small prop rather than a query.

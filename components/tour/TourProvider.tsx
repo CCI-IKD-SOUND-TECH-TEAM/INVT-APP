@@ -20,7 +20,7 @@ const TourContext = createContext<{ startTour: () => void } | null>(null);
 
 /**
  * Owns tour lifecycle and persistence. Mounts once in the (app) layout —
- * inside SidebarProvider (for useSidebar) and StoreProvider (for the user id)
+ * inside SidebarProvider (for useSidebar) and SessionProvider (for the user id)
  * — so client-side navigation never remounts it mid-tour.
  *
  * Persistence is two-layered: `profiles.tour_completed_at` is the source of
