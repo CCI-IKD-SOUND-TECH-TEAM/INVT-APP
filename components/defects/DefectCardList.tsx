@@ -2,7 +2,7 @@
 
 import SeverityLabel from "@/components/SeverityLabel";
 import StatusBadge from "@/components/StatusBadge";
-import type { Defect, InventoryItem } from "@/lib/types";
+import type { DefectWithItem } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,15 +21,14 @@ const OVERDUE_DAYS = 7;
 
 export default function DefectCardList({
   defects,
-  getItem,
   categoryName,
   daysOpen,
   onSelect,
   emptyMessage,
   className,
 }: {
-  defects: Defect[];
-  getItem: (id: string) => InventoryItem | undefined;
+  /** Carries the item name and category id from the join — no lookup needed. */
+  defects: DefectWithItem[];
   categoryName: (id: string) => string;
   daysOpen: (dateReported: string) => number;
   onSelect: (id: string) => void;
@@ -52,7 +51,6 @@ export default function DefectCardList({
   return (
     <ul className={cn("flex flex-col gap-2", className)}>
       {defects.map((d) => {
-        const item = getItem(d.item_id);
         const isTerminal =
           d.status === "Resolved" || d.status === "Not Repairable";
         const age = daysOpen(d.date_reported);
@@ -71,10 +69,10 @@ export default function DefectCardList({
               <span className="flex items-start justify-between gap-3">
                 <span className="flex min-w-0 flex-col">
                   <span className="text-[0.9375rem] leading-tight font-bold">
-                    {item?.item_name ?? "Unknown item"}
+                    {d.item_name}
                   </span>
                   <span className="truncate text-xs text-ink-faint">
-                    {item ? categoryName(item.category_id) : ""}
+                    {categoryName(d.category_id)}
                   </span>
                 </span>
                 <SeverityLabel severity={d.severity} />

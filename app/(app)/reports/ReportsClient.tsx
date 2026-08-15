@@ -1,9 +1,13 @@
 "use client";
 
 import { useMemo, useState, type ComponentProps, type ComponentType, type SVGProps } from "react";
-import { useStore, todayIso } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import { reportsQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import { todayIso } from "@/lib/store";
 import { isLowStock } from "@/lib/inventory";
-import type { AuditEntry, Defect, DefectSeverity, InventoryItem } from "@/lib/types";
+import type { DefectWithItem, ItemListRow } from "@/lib/api-types";
+import type { AuditEntry, Defect, DefectSeverity } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import SeverityLabel from "@/components/SeverityLabel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -36,12 +40,12 @@ interface FilterState {
 }
 
 interface ReportData {
-  items: InventoryItem[];
-  defects: Defect[];
+  items: ItemListRow[];
+  /** Carries item_name, so no id -> item lookup is needed. */
+  defects: DefectWithItem[];
   activity: AuditEntry[];
   categories: string[];
   users: string[];
-  getItem: (id: string) => InventoryItem | undefined;
   categoryName: (id: string) => string;
 }
 
@@ -203,7 +207,7 @@ const REPORTS: ReportDef[] = [
         .filter((d) => f.severity === "all" || d.severity === f.severity)
         .filter((d) => inRange(d.date_reported, f.from, f.to))
         .map((d) => ({
-          name: data.getItem(d.item_id)?.item_name ?? "Unknown item",
+          name: d.item_name,
           description: d.description,
           severity: d.severity,
           status: d.status,
@@ -263,7 +267,7 @@ const REPORTS: ReportDef[] = [
         .map((d) => {
           const terminal = d.history.find((e) => isTerminal(e.status));
           return {
-            name: data.getItem(d.item_id)?.item_name ?? "Unknown item",
+            name: d.item_name,
             defect: d.description,
             start: fmtDate(d.repair_start_date ?? undefined),
             party: d.performing_party ?? "—",
@@ -412,11 +416,19 @@ function printReport(name: string, { columns, rows }: ReportResult) {
 }
 
 export default function ReportsClient() {
-  const { items, defects, activity, categories, users, getItem, categoryName } =
-    useStore();
+  const { categories, users, categoryName } = useReference();
+  const { data: dataset, isPending } = useQuery(reportsQuery());
+
   const data: ReportData = useMemo(
-    () => ({ items, defects, activity, categories, users, getItem, categoryName }),
-    [items, defects, activity, categories, users, getItem, categoryName]
+    () => ({
+      items: dataset?.items ?? [],
+      defects: dataset?.defects ?? [],
+      activity: dataset?.activity ?? [],
+      categories,
+      users,
+      categoryName,
+    }),
+    [dataset, categories, users, categoryName]
   );
 
   const [openId, setOpenId] = useState<string | null>(null);
@@ -427,9 +439,22 @@ export default function ReportsClient() {
       <div>
         <h1 className="h-headline">Reports</h1>
         <p className="mt-1.5 text-muted-foreground">
-          Generate a filtered preview, then export to Excel (CSV) or PDF.
+          {isPending
+            ? "Loading report data…"
+            : "Generate a filtered preview, then export to Excel (CSV) or PDF."}
         </p>
       </div>
+
+      {/* A report that silently described 1,000 of 1,200 items as the whole
+          inventory would be worse than no report. PostgREST's max_rows caps the
+          response; say so rather than exporting a subset as if it were total. */}
+      {dataset?.truncated && (
+        <p className="rounded-lg border border-status-caution bg-status-caution-bg px-4 py-3 text-[0.8125rem] font-bold text-status-caution">
+          Showing {dataset.items.length} of {dataset.totalItems} items — the
+          data layer capped this response, so exports below are incomplete.
+          Raise <code>max_rows</code> in supabase/config.toml.
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         {REPORTS.map((r) => {

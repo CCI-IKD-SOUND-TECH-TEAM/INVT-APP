@@ -4,9 +4,22 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { useStore } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import {
+  checkSessionQuery,
+  checksQuery,
+  itemsByDepartmentQuery,
+} from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import {
+  useAbandonCheckSession,
+  useBulkMarkRemainingPresent,
+  useCompleteCheckSession,
+  useRecordCheckEntry,
+} from "@/lib/mutations/checks";
+import type { ItemListRow } from "@/lib/api-types";
 import { CHECK_TYPE_LABEL, isShortfall, weekStartIso } from "@/lib/checks";
-import type { CheckEntry, CheckResult, CheckSession, InventoryItem } from "@/lib/types";
+import type { CheckEntry, CheckResult, CheckSession, } from "@/lib/types";
 import CheckItemRow from "@/components/checks/CheckItemRow";
 import CheckResultBadge from "@/components/checks/CheckResultBadge";
 import Modal from "@/components/Modal";
@@ -21,8 +34,11 @@ import { cn } from "@/lib/utils";
 
 export default function CheckSessionClient() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { getCheckSession } = useStore();
-  const session = getCheckSession(sessionId);
+  const { data: session, isPending } = useQuery(checkSessionQuery(sessionId));
+
+  // Distinguish "still loading" from "no such session" — the store had every
+  // session in memory, so absence used to be conclusive. It isn't now.
+  if (isPending) return null;
 
   if (!session) {
     return (
@@ -54,16 +70,20 @@ export default function CheckSessionClient() {
 
 function WalkthroughView({ session }: { session: CheckSession }) {
   const router = useRouter();
-  const {
-    items,
-    categoryName,
-    departmentName,
-    checkSessions,
-    recordCheckEntry,
-    bulkMarkRemainingPresent,
-    completeCheckSession,
-    abandonCheckSession,
-  } = useStore();
+  const { departmentName } = useReference();
+
+  // Just this department's non-retired items, already sorted by the server.
+  const { data: items = [] } = useQuery(
+    itemsByDepartmentQuery(session.department_id)
+  );
+  // Only read for the set-down diff below; shares its cache entry with the
+  // checks list page.
+  const { data: checkSessions = [] } = useQuery(checksQuery(12));
+
+  const recordCheckEntry = useRecordCheckEntry();
+  const bulkMarkRemainingPresent = useBulkMarkRemainingPresent();
+  const completeCheckSession = useCompleteCheckSession();
+  const abandonCheckSession = useAbandonCheckSession();
 
   const [error, setError] = useState<string | null>(null);
   const [confirmBulk, setConfirmBulk] = useState(false);
@@ -76,28 +96,22 @@ function WalkthroughView({ session }: { session: CheckSession }) {
 
   // The checkable list is the LIVE set of non-retired department items, so an
   // item created or retired mid-session reflects immediately.
+  // The endpoint already scopes to the department and excludes retired items.
   const checkable = useMemo(
-    () =>
-      items
-        .filter(
-          (it) =>
-            it.department_id === session.department_id &&
-            it.status !== "Retired"
-        )
-        .sort((a, b) => a.item_name.localeCompare(b.item_name)),
-    [items, session.department_id]
+    () => [...items].sort((a, b) => a.item_name.localeCompare(b.item_name)),
+    [items]
   );
 
   const grouped = useMemo(() => {
-    const map = new Map<string, InventoryItem[]>();
+    const map = new Map<string, ItemListRow[]>();
     for (const it of checkable) {
-      const cat = categoryName(it.category_id);
+      const cat = it.category_name;
       const list = map.get(cat);
       if (list) list.push(it);
       else map.set(cat, [it]);
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [checkable, categoryName]);
+  }, [checkable]);
 
   const entryByItem = useMemo(
     () => new Map(session.entries.map((e) => [e.item_id, e])),
@@ -137,43 +151,58 @@ function WalkthroughView({ session }: { session: CheckSession }) {
     quantitySeen?: number
   ) => {
     setError(null);
-    const res = await recordCheckEntry({
-      session_id: session.id,
-      item_id: itemId,
-      result,
-      quantity_seen: quantitySeen,
-    });
-    if ("error" in res) setError(res.error);
+    try {
+      await recordCheckEntry.mutateAsync({
+        session_id: session.id,
+        item_id: itemId,
+        result,
+        quantity_seen: quantitySeen,
+        // Feeds the optimistic row so the stepper shows a sane expected value
+        // before the server round trip lands.
+        quantity_expected: items.find((it) => it.id === itemId)?.quantity ?? 0,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record that.");
+    }
   };
 
   const bulkMark = async () => {
     setBusy(true);
     setError(null);
-    const res = await bulkMarkRemainingPresent(session.id);
+    try {
+      await bulkMarkRemainingPresent.mutateAsync(session.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not mark the rest.");
+    }
     setBusy(false);
     setConfirmBulk(false);
-    if ("error" in res) setError(res.error);
   };
 
   const complete = async () => {
     setBusy(true);
     setError(null);
-    const res = await completeCheckSession(session.id);
+    try {
+      await completeCheckSession.mutateAsync(session.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not complete the check.");
+    }
     setBusy(false);
     setConfirmComplete(false);
-    if ("error" in res) setError(res.error);
   };
 
   const abandon = async () => {
     setBusy(true);
     setError(null);
-    const res = await abandonCheckSession(session.id);
-    setBusy(false);
-    setConfirmAbandon(false);
-    if ("error" in res) {
-      setError(res.error);
+    try {
+      await abandonCheckSession.mutateAsync(session.id);
+    } catch (e) {
+      setBusy(false);
+      setConfirmAbandon(false);
+      setError(e instanceof Error ? e.message : "Could not abandon the check.");
       return;
     }
+    setBusy(false);
+    setConfirmAbandon(false);
     router.push("/checks");
   };
 
@@ -419,7 +448,10 @@ function SummaryList({
 /* ------------------------------------------------------------------------- */
 
 function SummaryView({ session }: { session: CheckSession }) {
-  const { items, departmentName, profileName } = useStore();
+  const { departmentName, profileName } = useReference();
+  const { data: items = [] } = useQuery(
+    itemsByDepartmentQuery(session.department_id)
+  );
 
   const label = CHECK_TYPE_LABEL[session.session_type];
   const deptName = departmentName(session.department_id);

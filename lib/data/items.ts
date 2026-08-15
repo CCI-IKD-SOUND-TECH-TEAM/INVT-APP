@@ -12,6 +12,7 @@ import {
 } from "@/lib/queries/keys";
 import type {
   ItemListRow,
+  ItemOption,
   ItemStatusCounts,
   ItemsPage,
 } from "@/lib/api-types";
@@ -183,4 +184,46 @@ export async function getItemCountByUnit(unit: string): Promise<number> {
 
   if (error) throw new Error(`getItemCountByUnit failed: ${error.message}`);
   return count ?? 0;
+}
+
+/**
+ * Id + name for every non-retired item, for the pickers.
+ *
+ * Deliberately not paged: it backs a `<Select>`, which needs the full option
+ * list. Callers gate the query on the picker actually being open.
+ */
+export async function getItemOptions(): Promise<ItemOption[]> {
+  const supabase = createClient(await cookies());
+
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select("id, item_name")
+    .neq("status", "Retired")
+    .order("item_name");
+
+  if (error) throw new Error(`getItemOptions failed: ${error.message}`);
+  return (data ?? []) as ItemOption[];
+}
+
+/**
+ * department_id → count of non-retired items, for the weekly-check landing.
+ */
+export async function getDepartmentItemCounts(): Promise<
+  Record<string, number>
+> {
+  const supabase = createClient(await cookies());
+
+  const { data, error } = await supabase
+    .from("inventory_department_counts")
+    .select("department_id, count");
+
+  if (error) {
+    throw new Error(`getDepartmentItemCounts failed: ${error.message}`);
+  }
+
+  const out: Record<string, number> = {};
+  for (const row of data ?? []) {
+    out[row.department_id as string] = row.count as number;
+  }
+  return out;
 }

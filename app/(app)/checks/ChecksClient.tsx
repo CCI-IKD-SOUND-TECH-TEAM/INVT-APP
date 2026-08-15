@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { useStore } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import { checksQuery, departmentItemCountsQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import {
+  useAbandonCheckSession,
+  useStartCheckSession,
+} from "@/lib/mutations/checks";
 import { CHECK_TYPE_LABEL, weekStartIso } from "@/lib/checks";
 import type { CheckSession, CheckType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -72,36 +78,25 @@ export default function ChecksClient() {
 function ChecksContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const {
-    departments,
-    departmentIdByName,
-    items,
-    checkSessions,
-    startCheckSession,
-    abandonCheckSession,
-    profileName,
-  } = useStore();
+  const { departments, departmentIdByName, profileName } = useReference();
+  const { data: checkSessions = [] } = useQuery(checksQuery(12));
+  // Counted in Postgres — this used to iterate every item in the browser.
+  const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
+
+  const startCheckSession = useStartCheckSession();
+  const abandonCheckSession = useAbandonCheckSession();
 
   const currentWeek = weekStartIso();
   // Which (dept, type) cell has an action in flight, e.g. "Sound:setup".
   const [pendingCell, setPendingCell] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const checkableCount = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const it of items) {
-      if (it.status === "Retired") continue;
-      counts.set(it.department_id, (counts.get(it.department_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [items]);
-
   const defaultTab = useMemo(() => {
     const fromUrl = searchParams.get("dept");
     if (fromUrl && departments.includes(fromUrl)) return fromUrl;
     const withItems = departments.find((name) => {
       const id = departmentIdByName(name);
-      return id ? (checkableCount.get(id) ?? 0) > 0 : false;
+      return id ? (checkableCount[id] ?? 0) > 0 : false;
     });
     return withItems ?? departments[0];
   }, [searchParams, departments, departmentIdByName, checkableCount]);
@@ -152,21 +147,28 @@ function ChecksContent() {
     const key = `${deptName}:${type}`;
     setPendingCell(key);
     setError(null);
-    const res = await startCheckSession(deptId, type);
-    setPendingCell(null);
-    if ("error" in res) {
-      setError(res.error);
-      return;
+    try {
+      const session = await startCheckSession.mutateAsync({
+        department_id: deptId,
+        session_type: type,
+      });
+      setPendingCell(null);
+      router.push(`/checks/${session.id}`);
+    } catch (e) {
+      setPendingCell(null);
+      setError(e instanceof Error ? e.message : "Could not start that check.");
     }
-    router.push(`/checks/${res.id}`);
   }
 
   async function abandonStale(sessionId: string) {
     setPendingCell(`abandon:${sessionId}`);
     setError(null);
-    const res = await abandonCheckSession(sessionId);
+    try {
+      await abandonCheckSession.mutateAsync(sessionId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not abandon that check.");
+    }
     setPendingCell(null);
-    if ("error" in res) setError(res.error);
   }
 
   /**
@@ -217,7 +219,7 @@ function ChecksContent() {
         <TabsList className="-mx-4 max-w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:max-w-none md:px-0 [&::-webkit-scrollbar]:hidden">
           {departments.map((deptName) => {
             const deptId = departmentIdByName(deptName);
-            const count = deptId ? (checkableCount.get(deptId) ?? 0) : 0;
+            const count = deptId ? (checkableCount[deptId] ?? 0) : 0;
             const hasStale =
               deptId != null &&
               staleSessions.some((s) => s.department_id === deptId);
@@ -239,7 +241,7 @@ function ChecksContent() {
         {departments.map((deptName) => {
           const deptId = departmentIdByName(deptName);
           if (!deptId) return null;
-          const total = checkableCount.get(deptId) ?? 0;
+          const total = checkableCount[deptId] ?? 0;
           const deptStale = staleSessions.filter(
             (s) => s.department_id === deptId
           );

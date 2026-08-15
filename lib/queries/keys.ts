@@ -70,6 +70,10 @@ export const queryKeys = {
 
   dashboard: () => ["dashboard"] as const,
 
+  taxonomyUsage: () => ["taxonomy-usage"] as const,
+
+  reports: () => ["reports"] as const,
+
   activity: (limit: number) => ["activity", limit] as const,
 
   items: {
@@ -79,6 +83,8 @@ export const queryKeys = {
     detail: (id: string) => ["items", "detail", id] as const,
     byDepartment: (departmentId: string) =>
       ["items", "by-department", departmentId] as const,
+    options: () => ["items", "options"] as const,
+    departmentCounts: () => ["items", "department-counts"] as const,
     statusCounts: () => ["items", "status-counts"] as const,
     countByCategory: (categoryId: string) =>
       ["items", "count", "category", categoryId] as const,

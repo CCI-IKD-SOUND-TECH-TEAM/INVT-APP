@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useStore, type MutationResult } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import { taxonomyUsageQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import {
+  useLogAccessEmail,
+  useTaxonomyMutations,
+  type MutationResult,
+} from "@/lib/mutations/taxonomy";
 import { useTour } from "@/components/tour/TourProvider";
 import { inviteUser, requestSignIn } from "@/app/actions/auth";
 import type { Profile } from "@/lib/types";
@@ -26,7 +33,10 @@ function initials(name: string) {
 type Toast = { message: string; tone: "good" | "bad" } | null;
 
 export default function SettingsClient() {
-  const store = useStore();
+  const { categories, units, profiles } = useReference();
+  const { data: usage } = useQuery(taxonomyUsageQuery());
+  const taxonomy = useTaxonomyMutations();
+  const logAccessEmail = useLogAccessEmail();
   const { startTour } = useTour();
   const [toast, setToast] = useState<Toast>(null);
 
@@ -48,29 +58,29 @@ export default function SettingsClient() {
       <TaxonomyManager
         title="Manage Categories"
         noun="Category"
-        terms={store.categories}
-        usage={store.categoryUsage}
-        add={store.addCategory}
-        rename={store.renameCategory}
-        remove={store.deleteCategory}
+        terms={categories}
+        usage={(name) => usage?.categories[name] ?? 0}
+        add={taxonomy.addCategory}
+        rename={taxonomy.renameCategory}
+        remove={taxonomy.deleteCategory}
         onToast={flash}
       />
 
       <TaxonomyManager
         title="Manage Units of Measure"
         noun="Unit"
-        terms={store.units}
-        usage={store.unitUsage}
-        add={store.addUnit}
-        rename={store.renameUnit}
-        remove={store.deleteUnit}
+        terms={units}
+        usage={(name) => usage?.units[name] ?? 0}
+        add={taxonomy.addUnit}
+        rename={taxonomy.renameUnit}
+        remove={taxonomy.deleteUnit}
         onToast={flash}
       />
 
       <UserAccounts
-        profiles={store.profiles}
+        profiles={profiles}
         onSent={(name, kind) => {
-          store.logAccessEmail(name, kind);
+          logAccessEmail.mutate({ name, kind });
           flash(
             kind === "invite"
               ? `Invite sent to ${name}.`

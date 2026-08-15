@@ -97,20 +97,6 @@ left join lateral (
 grant select on public.inventory_items_list to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3b. Status counts — the inventory filter chips
--- ---------------------------------------------------------------------------
--- The chips show an absolute count per status, independent of the active
--- filters, so they cannot be derived from a filtered page. One grouped scan,
--- cached separately from the list so paging and sorting never refetch it.
-create or replace view public.inventory_status_counts
-  with (security_invoker = true) as
-select status, count(*)::int as count
-from public.inventory_items
-group by status;
-
-grant select on public.inventory_status_counts to authenticated;
-
--- ---------------------------------------------------------------------------
 -- 4. dashboard_stats() — every dashboard number in one round trip
 -- ---------------------------------------------------------------------------
 -- Replaces the client-side aggregation in app/(app)/dashboard/page.tsx. Each

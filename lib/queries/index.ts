@@ -5,7 +5,12 @@ import {
   queryKeys,
   type ItemFilters,
 } from "@/lib/queries/keys";
-import type { AuditEntry, CheckSession, DefectStatus } from "@/lib/types";
+import type {
+  AuditEntry,
+  CheckSession,
+  DefectStatus,
+  InventoryItem,
+} from "@/lib/types";
 
 /**
  * Query definitions, shared by both sides of the RSC boundary: a page
@@ -22,18 +27,24 @@ import type {
   DashboardStats,
   DefectWithItem,
   ItemListRow,
+  ItemOption,
   ItemStatusCounts,
   ItemsPage,
   Reference,
+  ReportsDataset,
+  TaxonomyUsage,
 } from "@/lib/api-types";
 
 export type {
   DashboardStats,
   DefectWithItem,
   ItemListRow,
+  ItemOption,
   ItemStatusCounts,
   ItemsPage,
   Reference,
+  ReportsDataset,
+  TaxonomyUsage,
 };
 
 export function referenceQuery() {
@@ -43,6 +54,25 @@ export function referenceQuery() {
     // Taxonomy changes a few times a year. Refetching it per route is pure
     // overhead, and a stale category name for an hour is harmless.
     staleTime: 60 * 60_000,
+  });
+}
+
+export function reportsQuery() {
+  return queryOptions({
+    queryKey: queryKeys.reports(),
+    queryFn: ({ signal }) =>
+      fetchJson<ReportsDataset>("/api/reports", signal),
+    // The heaviest read in the app; don't refetch it while someone is working
+    // through report definitions.
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function taxonomyUsageQuery() {
+  return queryOptions({
+    queryKey: queryKeys.taxonomyUsage(),
+    queryFn: ({ signal }) =>
+      fetchJson<TaxonomyUsage>("/api/taxonomy/usage", signal),
   });
 }
 
@@ -80,6 +110,38 @@ export function itemsQuery(filters: Partial<ItemFilters> = {}) {
         })}`,
         signal
       ),
+  });
+}
+
+/**
+ * Backs the "which item?" selects. `enabled` is the point: the picker lists
+ * every non-retired item, so the fetch waits until a modal actually opens
+ * rather than riding along with every page load.
+ */
+export function itemQuery(id: string) {
+  return queryOptions({
+    queryKey: queryKeys.items.detail(id),
+    queryFn: ({ signal }) =>
+      fetchJson<InventoryItem | null>(`/api/items/${id}`, signal),
+    enabled: Boolean(id),
+  });
+}
+
+export function itemOptionsQuery(enabled = true) {
+  return queryOptions({
+    queryKey: queryKeys.items.options(),
+    queryFn: ({ signal }) =>
+      fetchJson<ItemOption[]>("/api/items/options", signal),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function departmentItemCountsQuery() {
+  return queryOptions({
+    queryKey: queryKeys.items.departmentCounts(),
+    queryFn: ({ signal }) =>
+      fetchJson<Record<string, number>>("/api/departments/counts", signal),
   });
 }
 

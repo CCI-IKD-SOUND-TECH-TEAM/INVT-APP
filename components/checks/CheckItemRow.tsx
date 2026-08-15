@@ -10,8 +10,9 @@ import {
   IconPlus as PlusIcon,
   IconX as XMarkIcon,
 } from "@tabler/icons-react";
-import type { CheckEntry, CheckResult, InventoryItem } from "@/lib/types";
+import type { CheckEntry, CheckResult, } from "@/lib/types";
 import { isShortfall } from "@/lib/checks";
+import type { ItemListRow } from "@/lib/api-types";
 import { formatUnit } from "@/lib/inventory";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,7 @@ export default function CheckItemRow({
   showSetupDiff,
   onRecord,
 }: {
-  item: InventoryItem;
+  item: ItemListRow;
   entry?: CheckEntry;
   /** This week's setup entry for the same item (set-down sessions only). */
   setupEntry?: CheckEntry;

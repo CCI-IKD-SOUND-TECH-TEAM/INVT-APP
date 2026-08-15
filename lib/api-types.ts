@@ -1,5 +1,6 @@
 import type {
   AssetType,
+  AuditEntry,
   Category,
   DefectStatus,
   Defect,
@@ -90,6 +91,16 @@ export interface ItemsPage {
 }
 
 /**
+ * Id + name only, for the "which item?" pickers. The defect log and the check
+ * walkthrough need every non-retired item in a select, but nothing else about
+ * them — this is ~50 bytes a row instead of a full item.
+ */
+export interface ItemOption {
+  id: string;
+  item_name: string;
+}
+
+/**
  * Absolute per-status counts for the filter chips. Independent of the active
  * filters, so it is cached separately from any list page.
  */
@@ -99,6 +110,26 @@ export interface ItemStatusCounts {
   total: number;
   /** Non-retired — the "All" chip. */
   totalActive: number;
+}
+
+/**
+ * Everything /reports needs, in one payload. The only read that legitimately
+ * wants the full dataset — reports are cross-entity exports with no filter to
+ * push into SQL. `truncated` is set when PostgREST's max_rows clipped the item
+ * list, so a report can say so instead of silently describing a subset.
+ */
+export interface ReportsDataset {
+  items: ItemListRow[];
+  defects: DefectWithItem[];
+  activity: AuditEntry[];
+  totalItems: number;
+  truncated: boolean;
+}
+
+/** Item counts keyed by category name and unit name, for the Settings lists. */
+export interface TaxonomyUsage {
+  categories: Record<string, number>;
+  units: Record<string, number>;
 }
 
 /**

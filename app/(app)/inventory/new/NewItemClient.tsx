@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useRef, useState } from "react";
-import { useStore, type NewItemInput } from "@/lib/store";
+import { Suspense, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { itemOptionsQuery, itemQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import {
+  useCreateItem,
+  useRetireItem,
+  useUpdateItem,
+} from "@/lib/mutations/items";
+import type { NewItemInput } from "@/lib/types";
 import type { AssetType, InventoryItem } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Modal from "@/components/Modal";
@@ -113,10 +121,6 @@ function ItemFormContent() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
   const {
-    items,
-    addItem,
-    updateItem,
-    retireItem,
     categories,
     units,
     departments,
@@ -124,12 +128,23 @@ function ItemFormContent() {
     departmentName,
     categoryIdByName,
     departmentIdByName,
-  } = useStore();
+  } = useReference();
 
-  const editingItem = useMemo(
-    () => (editId ? items.find((i) => i.id === editId) : undefined),
-    [editId, items]
-  );
+  const addItem = useCreateItem();
+  const updateItem = useUpdateItem();
+  const retireItem = useRetireItem();
+
+  // Just the row being edited, prefetched by the server wrapper — not the
+  // whole table filtered down to one.
+  const { data: editingItem } = useQuery({
+    ...itemQuery(editId ?? ""),
+    enabled: Boolean(editId),
+  });
+
+  // Id + name for every active item, for the duplicate-name check below. The
+  // check has to see names this form never renders, so it needs the full list
+  // — but only two fields of it.
+  const { data: items = [] } = useQuery(itemOptionsQuery());
   const isEdit = Boolean(editingItem);
 
   const [form, setForm] = useState<FormState>(() =>
@@ -163,10 +178,10 @@ function ItemFormContent() {
     else if (form.name.length > 100)
       next.name = "Item Name must be 100 characters or fewer.";
     else {
+      // itemOptionsQuery already excludes retired items.
       const duplicate = items.some(
         (i) =>
           i.id !== editId &&
-          i.status !== "Retired" &&
           i.item_name.trim().toLowerCase() === form.name.trim().toLowerCase()
       );
       if (duplicate)
@@ -306,10 +321,10 @@ function ItemFormContent() {
     try {
       let id: string;
       if (isEdit && editingItem) {
-        await updateItem(editingItem.id, payload);
+        await updateItem.mutateAsync({ id: editingItem.id, patch: payload });
         id = editingItem.id;
       } else {
-        const created = await addItem(payload);
+        const created = await addItem.mutateAsync(payload);
         if (!created) {
           setSubmitting(false);
           return;
@@ -575,8 +590,9 @@ function ItemFormContent() {
                 <Select
                   value={editingItem!.status}
                   onValueChange={(v) =>
-                    updateItem(editingItem!.id, {
-                      status: v as InventoryItem["status"],
+                    updateItem.mutate({
+                      id: editingItem!.id,
+                      patch: { status: v as InventoryItem["status"] },
                     })
                   }
                 >
@@ -751,7 +767,7 @@ function ItemFormContent() {
               onClick={async () => {
                 setRetiring(true);
                 try {
-                  await retireItem(editingItem.id);
+                  await retireItem.mutateAsync(editingItem.id);
                   setShowRetire(false);
                   router.push("/inventory");
                 } catch {

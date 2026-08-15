@@ -2,8 +2,17 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
-import { useStore } from "@/lib/store";
-import type { Defect, DefectSeverity, InventoryItem } from "@/lib/types";
+import { useQuery } from "@tanstack/react-query";
+import { defectsQuery, itemOptionsQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import {
+  useLogDefect,
+  useMarkNotRepairable,
+  useResolveDefect,
+  useStartRepair,
+} from "@/lib/mutations/defects";
+import type { DefectWithItem } from "@/lib/api-types";
+import type { Defect, DefectSeverity } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import SeverityLabel from "@/components/SeverityLabel";
 import DefectCardList from "@/components/defects/DefectCardList";
@@ -73,7 +82,8 @@ export default function DefectsClient() {
 function DefectLogContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { items, defects, getItem, categoryName } = useStore();
+  const { categoryName } = useReference();
+  const { data: defects = [] } = useQuery(defectsQuery());
 
   const [tab, setTab] = useState<"open" | "all">("open");
   const [logOpen, setLogOpen] = useState(searchParams.get("log") === "1");
@@ -127,7 +137,6 @@ function DefectLogContent() {
       <DefectCardList
         className="md:hidden"
         defects={visible}
-        getItem={getItem}
         categoryName={categoryName}
         daysOpen={daysOpen}
         onSelect={setSelectedId}
@@ -152,16 +161,16 @@ function DefectLogContent() {
           </TableHeader>
           <TableBody>
             {visible.map((d) => {
-              const item = getItem(d.item_id);
+
               const isTerminal = d.status === "Resolved" || d.status === "Not Repairable";
               return (
                 <TableRow key={d.id} className="cursor-pointer" onClick={() => setSelectedId(d.id)}>
                   <TableCell>
                     <strong className="block text-[0.875rem] font-bold">
-                      {item?.item_name ?? "Unknown item"}
+                      {d.item_name}
                     </strong>
                     <span className="text-xs text-ink-faint">
-                      {item ? categoryName(item.category_id) : ""}
+                      {categoryName(d.category_id)}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-80 truncate text-muted-foreground">
@@ -198,14 +207,13 @@ function DefectLogContent() {
       {selectedDefect && (
         <DefectDrawer
           defect={selectedDefect}
-          item={getItem(selectedDefect.item_id)}
+
           onClose={() => setSelectedId(null)}
         />
       )}
 
       {logOpen && (
         <LogDefectModal
-          items={items.filter((i) => i.status !== "Retired")}
           initialItemId={searchParams.get("item") ?? undefined}
           onClose={closeLogModal}
         />
@@ -216,14 +224,13 @@ function DefectLogContent() {
 
 function DefectDrawer({
   defect,
-  item,
   onClose,
 }: {
-  defect: Defect;
-  item: InventoryItem | undefined;
+  /** The item name rides on the defect row — see getDefects(). */
+  defect: DefectWithItem;
   onClose: () => void;
 }) {
-  const { profileName } = useStore();
+  const { profileName } = useReference();
   const [showStart, setShowStart] = useState(false);
   const [showResolve, setShowResolve] = useState(false);
   const [showNotRepairable, setShowNotRepairable] = useState(false);
@@ -234,7 +241,7 @@ function DefectDrawer({
         <SheetContent aria-describedby={undefined}>
           <SheetHeader>
             <div>
-              <SheetTitle>{item?.item_name ?? "Unknown item"}</SheetTitle>
+              <SheetTitle>{defect.item_name}</SheetTitle>
               <div className="mt-2 flex items-center gap-2.5">
                 <SeverityLabel severity={defect.severity} />
                 <StatusBadge status={defect.status} />
@@ -355,21 +362,17 @@ function DefectDrawer({
 }
 
 function LogDefectModal({
-  items,
   initialItemId,
   onClose,
 }: {
-  items: InventoryItem[];
   /** Pre-select an item (deep link from the weekly check walkthrough). */
   initialItemId?: string;
   onClose: () => void;
 }) {
-  const { logDefect } = useStore();
-  const [itemId, setItemId] = useState(() =>
-    initialItemId && items.some((i) => i.id === initialItemId)
-      ? initialItemId
-      : ""
-  );
+  // Fetched only now the modal is mounted — it lists every non-retired item.
+  const { data: items = [] } = useQuery(itemOptionsQuery());
+  const logDefect = useLogDefect();
+  const [itemId, setItemId] = useState(initialItemId ?? "");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<DefectSeverity | "">("");
   const [dateReported, setDateReported] = useState(TODAY);
@@ -391,7 +394,7 @@ function LogDefectModal({
 
     setSubmitting(true);
     try {
-      await logDefect({
+      await logDefect.mutateAsync({
         item_id: itemId,
         description: description.trim(),
         severity: severity as DefectSeverity,
@@ -498,7 +501,7 @@ function StartRepairModal({
   defect: Defect;
   onClose: () => void;
 }) {
-  const { startRepair } = useStore();
+  const startRepair = useStartRepair();
   const [date, setDate] = useState(TODAY);
   const [party, setParty] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -513,7 +516,11 @@ function StartRepairModal({
     if (Object.keys(next).length > 0) return;
     setSubmitting(true);
     try {
-      await startRepair(defect.id, date, party.trim());
+      await startRepair.mutateAsync({
+        defectId: defect.id,
+        repair_start_date: date,
+        performing_party: party.trim(),
+      });
       onClose();
     } catch {
       setSubmitting(false);
@@ -570,7 +577,7 @@ function ResolveModal({
   defect: Defect;
   onClose: () => void;
 }) {
-  const { resolveDefect } = useStore();
+  const resolveDefect = useResolveDefect();
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -583,7 +590,10 @@ function ResolveModal({
     }
     setSubmitting(true);
     try {
-      await resolveDefect(defect.id, notes.trim());
+      await resolveDefect.mutateAsync({
+        defectId: defect.id,
+        resolution_notes: notes.trim(),
+      });
       onClose();
     } catch {
       setSubmitting(false);
@@ -632,7 +642,7 @@ function NotRepairableModal({
   defect: Defect;
   onClose: () => void;
 }) {
-  const { markNotRepairable } = useStore();
+  const markNotRepairable = useMarkNotRepairable();
   const [step, setStep] = useState<1 | 2>(1);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
@@ -653,11 +663,14 @@ function NotRepairableModal({
     e.preventDefault();
     setSubmitting(true);
     try {
-      await markNotRepairable(
-        defect.id,
-        notes.trim(),
-        followUp === "retire" ? { action: "retire" } : { action: "set-status", status: newStatus }
-      );
+      await markNotRepairable.mutateAsync({
+        defectId: defect.id,
+        resolution_notes: notes.trim(),
+        followUp:
+          followUp === "retire"
+            ? { action: "retire" }
+            : { action: "set-status", status: newStatus },
+      });
       onClose();
     } catch {
       setSubmitting(false);
