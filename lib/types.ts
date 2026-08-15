@@ -146,6 +146,11 @@ export interface ItemImage {
 export interface Defect {
   id: string;
   item_id: string;
+  /**
+   * Which physical unit is broken. Null means the defect is against the whole
+   * item — either it isn't unit-tracked, or every unit is affected.
+   */
+  item_unit_id?: string | null;
   description: string;
   date_reported: string;
   reported_by: string;

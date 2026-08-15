@@ -117,6 +117,7 @@ export function mapDefect(
   return {
     id: row.id as string,
     item_id: row.item_id as string,
+    item_unit_id: (row.item_unit_id as string | null) ?? null,
     description: row.description as string,
     date_reported: row.date_reported as string,
     reported_by: (row.reported_by as string | null) ?? "",

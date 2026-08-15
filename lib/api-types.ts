@@ -155,4 +155,10 @@ export interface TaxonomyUsage {
 export interface DefectWithItem extends Defect {
   item_name: string;
   category_id: string;
+  /**
+   * Label of the affected unit, resolved server-side. Null when the defect is
+   * against the whole item.
+   */
+  unit_label: string | null;
+  unit_serial_number: string | null;
 }

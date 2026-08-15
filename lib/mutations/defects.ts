@@ -34,6 +34,8 @@ export function useLogDefect() {
   return useMutation({
     mutationFn: async (input: {
       item_id: string;
+      /** The affected unit; null logs the defect against the whole item. */
+      item_unit_id?: string | null;
       description: string;
       severity: Defect["severity"];
       date_reported: string;

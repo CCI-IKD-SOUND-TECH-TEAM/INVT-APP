@@ -127,6 +127,9 @@ function buildDefects(): DefectWithItem[] {
       ...d,
       item_name: item?.item_name ?? "Unknown item",
       category_id: item?.category_id ?? "",
+      // No fixture item is unit-tracked, so every defect is item-scoped.
+      unit_label: null,
+      unit_serial_number: null,
     };
   });
 }
