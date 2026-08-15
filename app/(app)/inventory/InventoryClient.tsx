@@ -833,7 +833,7 @@ function BulkImportModal({
   onDownloadTemplate: () => void;
   onImport: (rows: NewItemInput[]) => void | Promise<void>;
 }) {
-  const { categories, units, categoryIdByName, departmentIdByName } =
+  const { categories, units, departments, categoryIdByName, departmentIdByName } =
     useReference();
   const [fileName, setFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -878,7 +878,9 @@ function BulkImportModal({
         errors.push({ row: i + 1, reason: `Unknown unit of measure "${unit}"` });
         continue;
       }
-      if (!["Sound", "Light", "Projection"].includes(department)) {
+      // Checked against the live list, not a hardcoded three — departments are
+      // managed from Settings, so a newly added one has to import too.
+      if (!departments.includes(department)) {
         errors.push({ row: i + 1, reason: `Unknown department "${department}"` });
         continue;
       }

@@ -103,6 +103,10 @@ export function usePreviewCache() {
       acc[unit] = SEED.items.filter((i) => i.unit_of_measure === unit).length;
       return acc;
     }, {}),
+    departments: SEED.departments.reduce<Record<string, number>>((acc, d) => {
+      acc[d.name] = SEED.items.filter((i) => i.department_id === d.id).length;
+      return acc;
+    }, {}),
   });
 
   queryClient.setQueryData(reportsQuery().queryKey, {

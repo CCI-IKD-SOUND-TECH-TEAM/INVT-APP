@@ -126,10 +126,15 @@ export interface ReportsDataset {
   truncated: boolean;
 }
 
-/** Item counts keyed by category name and unit name, for the Settings lists. */
+/**
+ * Item counts keyed by term name, for the three Settings lists. Every managed
+ * taxonomy appears here — a term nothing uses reports 0 rather than being
+ * absent, so the panel can always render a count.
+ */
 export interface TaxonomyUsage {
   categories: Record<string, number>;
   units: Record<string, number>;
+  departments: Record<string, number>;
 }
 
 /**

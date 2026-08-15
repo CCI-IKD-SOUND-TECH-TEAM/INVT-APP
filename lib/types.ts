@@ -16,7 +16,11 @@ export type AssetType =
   | "Electronics"
   | "Other";
 
-export type DepartmentName = "Sound" | "Light" | "Projection";
+/**
+ * Departments are user-managed taxonomy (Settings), not a fixed set — Sound,
+ * Light, Projection and Power are seeded, and staff add their own.
+ */
+export type DepartmentName = string;
 
 export interface Profile {
   id: string;
