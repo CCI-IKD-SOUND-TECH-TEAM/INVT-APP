@@ -128,6 +128,14 @@ export default function ItemCardList({
                   <span className="truncate text-[0.8125rem] text-muted-foreground">
                     {item.category_name}
                   </span>
+                  {/* The badge says the item is Defective; this says how much
+                      of it is — "1 of 4" still leaves three working. */}
+                  {item.defective_unit_count > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-status-critical">
+                      <ExclamationTriangleIcon className="size-[11px]" />
+                      {item.defective_unit_count} of {item.unit_count} defective
+                    </span>
+                  )}
                   {item.is_low_stock && (
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-status-caution">
                       <ExclamationTriangleIcon className="size-[11px]" /> Low

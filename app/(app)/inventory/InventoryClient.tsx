@@ -111,6 +111,13 @@ function InventoryCard({
           </span>
         </div>
 
+        {item.defective_unit_count > 0 && (
+          <span className="inline-flex w-fit items-center gap-1 text-xs font-bold text-status-critical">
+            <ExclamationTriangleIcon className="size-[11px]" />
+            {item.defective_unit_count} of {item.unit_count} defective
+          </span>
+        )}
+
         {lowStock && (
           <span className="inline-flex w-fit items-center gap-1 text-xs font-bold text-status-caution">
             <ExclamationTriangleIcon className="size-[11px]" /> Low stock
@@ -673,6 +680,15 @@ function InventoryContent() {
                     <TableCell className="text-muted-foreground">{catLabel}</TableCell>
                     <TableCell>
                       <StatusBadge status={item.status} />
+                      {/* The badge is the item's rollup; this says how many of
+                          its units are out of service — "1 of 4" still leaves
+                          three working. */}
+                      {item.defective_unit_count > 0 && (
+                        <span className="mt-1 flex items-center gap-1 text-xs font-bold text-status-critical">
+                          <ExclamationTriangleIcon className="size-[11px]" />
+                          {item.defective_unit_count} of {item.unit_count} defective
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {item.quantity} {formatUnit(item.unit_of_measure, item.quantity)}
@@ -833,7 +849,7 @@ function BulkImportModal({
   onDownloadTemplate: () => void;
   onImport: (rows: NewItemInput[]) => void | Promise<void>;
 }) {
-  const { categories, units, categoryIdByName, departmentIdByName } =
+  const { categories, units, departments, categoryIdByName, departmentIdByName } =
     useReference();
   const [fileName, setFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -878,7 +894,9 @@ function BulkImportModal({
         errors.push({ row: i + 1, reason: `Unknown unit of measure "${unit}"` });
         continue;
       }
-      if (!["Sound", "Light", "Projection"].includes(department)) {
+      // Checked against the live list, not a hardcoded three — departments are
+      // managed from Settings, so a newly added one has to import too.
+      if (!departments.includes(department)) {
         errors.push({ row: i + 1, reason: `Unknown department "${department}"` });
         continue;
       }

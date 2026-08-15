@@ -103,6 +103,10 @@ export function usePreviewCache() {
       acc[unit] = SEED.items.filter((i) => i.unit_of_measure === unit).length;
       return acc;
     }, {}),
+    departments: SEED.departments.reduce<Record<string, number>>((acc, d) => {
+      acc[d.name] = SEED.items.filter((i) => i.department_id === d.id).length;
+      return acc;
+    }, {}),
   });
 
   queryClient.setQueryData(reportsQuery().queryKey, {
@@ -123,6 +127,9 @@ function buildDefects(): DefectWithItem[] {
       ...d,
       item_name: item?.item_name ?? "Unknown item",
       category_id: item?.category_id ?? "",
+      // No fixture item is unit-tracked, so every defect is item-scoped.
+      unit_label: null,
+      unit_serial_number: null,
     };
   });
 }
@@ -154,6 +161,10 @@ function buildRows(): ItemListRow[] {
       category_name: categoryName.get(i.category_id) ?? "—",
       department_name: departmentName.get(i.department_id) ?? "—",
       first_image_url: i.images[0] ?? null,
+      // No fixture item is unit-tracked — 0 is what the real view returns for
+      // an item with no unit rows.
+      unit_count: 0,
+      defective_unit_count: 0,
       last_confirmed_at: SEED.lastConfirmed[i.id] ?? null,
     }));
 }

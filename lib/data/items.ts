@@ -132,7 +132,7 @@ export async function getItemById(id: string): Promise<InventoryItem | null> {
 
   const { data, error } = await supabase
     .from("inventory_items")
-    .select("*, item_images(url, display_order)")
+    .select("*, item_images(url, display_order), item_units(*)")
     .eq("id", id)
     .maybeSingle();
 

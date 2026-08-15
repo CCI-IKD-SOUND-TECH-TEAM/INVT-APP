@@ -4,9 +4,16 @@ import {
   fetchItemById,
   getActor,
   getSupabase,
+  rollupItemStatus,
   writeAudit,
 } from "@/lib/data/helpers";
-import type { AuditEntry, InventoryItem, NewItemInput } from "@/lib/types";
+import { reconcileItemUnits } from "@/lib/data/units";
+import type {
+  AuditEntry,
+  InventoryItem,
+  ItemPatch,
+  NewItemInput,
+} from "@/lib/types";
 
 /**
  * Inventory item writes. Each returns the canonical row (re-read after the
@@ -83,6 +90,18 @@ export async function createItem(input: NewItemInput): Promise<ItemResult> {
   }
 
   await replaceImages(supabase, data.id, input.images ?? []);
+
+  if (input.units && input.units.length > 0) {
+    const failure = await reconcileItemUnits(supabase, data.id, input.units);
+    // The item row is already saved, so a bad serial can't roll it back. Say
+    // which half failed rather than reporting a clean save or a total failure.
+    if (failure) {
+      return {
+        error: `Item saved, but its units weren't: ${failure.charAt(0).toLowerCase()}${failure.slice(1)}`,
+      };
+    }
+  }
+
   const activity = await writeAudit(
     supabase,
     actor,
@@ -96,11 +115,25 @@ export async function createItem(input: NewItemInput): Promise<ItemResult> {
 
 export async function updateItem(
   id: string,
-  patch: Partial<InventoryItem>
+  patch: ItemPatch
 ): Promise<ItemResult> {
   const supabase = await getSupabase();
   const actor = await getActor(supabase);
   if (!actor) return { error: "Your session expired. Sign in again." };
+
+  // Units are reconciled BEFORE the item columns, because a unit write moves
+  // `quantity` by trigger. Saving the item first and the units second would let
+  // the last unit deletion leave behind the count from the second-to-last one.
+  // Doing it in this order, the item's own quantity always lands last — and is
+  // still overridden by the pin trigger while unit rows remain.
+  //
+  // Absent means "leave the units alone": an update that only moves the
+  // location must not delete the serials. An empty array does mean "remove
+  // them all", which is how the form untracks an item.
+  if (patch.units) {
+    const failure = await reconcileItemUnits(supabase, id, patch.units);
+    if (failure) return { error: failure };
+  }
 
   const update: Record<string, unknown> = { updated_by: actor.id };
   for (const [key, value] of Object.entries(patch)) {
@@ -118,6 +151,10 @@ export async function updateItem(
   }
 
   if (patch.images) await replaceImages(supabase, id, patch.images);
+
+  // After the column write, so a `status` in the patch can't win over what the
+  // units actually say.
+  if (patch.units) await rollupItemStatus(supabase, id, actor.id);
 
   const item = await fetchItemById(supabase, id);
   return { item };

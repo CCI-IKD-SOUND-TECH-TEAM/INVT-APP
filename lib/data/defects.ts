@@ -16,7 +16,7 @@ export async function getDefects(
   let query = supabase
     .from("defects")
     .select(
-      "*, repair_events(id, status, note, user_id, created_at), inventory_items(item_name, category_id)"
+      "*, repair_events(id, status, note, user_id, created_at), inventory_items(item_name, category_id), item_units(label, serial_number)"
     )
     .order("date_reported", { ascending: false });
 
@@ -41,10 +41,17 @@ export async function getDefects(
       item_name: string;
       category_id: string;
     } | null;
+    // Null whenever the defect is against the whole item rather than one unit.
+    const unit = row.item_units as {
+      label: string;
+      serial_number: string | null;
+    } | null;
     return {
       ...mapDefect(row, nameById),
       item_name: item?.item_name ?? "Unknown item",
       category_id: item?.category_id ?? "",
+      unit_label: unit?.label ?? null,
+      unit_serial_number: unit?.serial_number ?? null,
     };
   });
 }

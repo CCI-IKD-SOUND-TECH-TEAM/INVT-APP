@@ -12,7 +12,13 @@ import {
   useUpdateItem,
 } from "@/lib/mutations/items";
 import type { NewItemInput } from "@/lib/types";
-import type { AssetType, InventoryItem } from "@/lib/types";
+import type {
+  AssetType,
+  InventoryItem,
+  ItemStatus,
+  ItemUnit,
+  ItemUnitInput,
+} from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import Modal from "@/components/Modal";
 import { Button } from "@/components/ui/button";
@@ -21,7 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { IconArrowLeft as ArrowLeftIcon, IconCheck as CheckIcon, IconAlertTriangle as ExclamationTriangleIcon, IconPhoto as PhotoIcon, IconX as XMarkIcon } from "@tabler/icons-react";
+import { IconArrowLeft as ArrowLeftIcon, IconCheck as CheckIcon, IconAlertTriangle as ExclamationTriangleIcon, IconPhoto as PhotoIcon, IconPlus as PlusIcon, IconX as XMarkIcon } from "@tabler/icons-react";
 
 const ASSET_TYPES: AssetType[] = [
   "Equipment",
@@ -30,6 +36,39 @@ const ASSET_TYPES: AssetType[] = [
   "Electronics",
   "Other",
 ];
+
+/**
+ * One row of the units editor.
+ *
+ * `key` is a client-side identity so React can track a row that has no database
+ * id yet; `id` is present only for a row that already exists. Serial and label
+ * are held as strings because they come straight off an input.
+ */
+interface UnitDraft {
+  key: string;
+  id?: string;
+  label: string;
+  serialNumber: string;
+  status: ItemStatus;
+}
+
+/** Statuses a unit can be moved to by hand — the rest come from the Defect Log. */
+const UNIT_STATUS_CHOICES: ItemStatus[] = ["Available", "In Use", "Retired"];
+
+let unitKeySeq = 0;
+function newUnitKey() {
+  return `unit-${unitKeySeq++}`;
+}
+
+function unitsToDrafts(units: ItemUnit[]): UnitDraft[] {
+  return units.map((u) => ({
+    key: newUnitKey(),
+    id: u.id,
+    label: u.label,
+    serialNumber: u.serial_number ?? "",
+    status: u.status,
+  }));
+}
 
 // UI-shaped form state, mapped to/from InventoryItem at the itemToForm / submit boundaries.
 interface FormState {
@@ -122,7 +161,9 @@ function ItemFormContent() {
   const editId = searchParams.get("id");
   const {
     categories,
-    units,
+    // Aliased: "units" in this file means the item's individual physical units,
+    // which is a different thing from a unit of measure.
+    units: unitsOfMeasure,
     departments,
     categoryName,
     departmentName,
@@ -155,6 +196,24 @@ function ItemFormContent() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>(
     {}
   );
+  // Empty means "not unit-tracked": one quantity, one status, one serial on the
+  // item itself — the shape every item had before units existed.
+  const [units, setUnits] = useState<UnitDraft[]>(() =>
+    editingItem ? unitsToDrafts(editingItem.units) : []
+  );
+  const [unitsError, setUnitsError] = useState("");
+  const tracksUnits = units.length > 0;
+
+  // The item query is prefetched, so the initialisers above normally see it on
+  // the first render — but if it lands later (cache miss, direct navigation)
+  // the form would stay blank and a save would wipe the units it never loaded.
+  // Re-seed once, keyed on the id, so a later refetch can't clobber edits.
+  const [hydratedFor, setHydratedFor] = useState(editingItem?.id ?? null);
+  if (editingItem && hydratedFor !== editingItem.id) {
+    setHydratedFor(editingItem.id);
+    setForm(itemToForm(editingItem, categoryName, departmentName));
+    setUnits(unitsToDrafts(editingItem.units));
+  }
   const [showRetire, setShowRetire] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -169,6 +228,85 @@ function ItemFormContent() {
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: undefined }));
+  }
+
+  function setUnit(key: string, patch: Partial<UnitDraft>) {
+    setUnits((list) =>
+      list.map((u) => (u.key === key ? { ...u, ...patch } : u))
+    );
+    setUnitsError("");
+  }
+
+  function addUnitRow() {
+    setUnits((list) => [
+      ...list,
+      { key: newUnitKey(), label: `Unit ${list.length + 1}`, serialNumber: "", status: "Available" },
+    ]);
+    setUnitsError("");
+  }
+
+  /**
+   * Turn a quantity into that many unit rows. The item's own serial moves onto
+   * the first one — it described a single piece of hardware, and once units
+   * exist that is where a serial belongs.
+   */
+  function startTrackingUnits() {
+    const count = Math.min(Math.max(Number(form.quantity) || 1, 1), 50);
+    setUnits(
+      Array.from({ length: count }, (_, i) => ({
+        key: newUnitKey(),
+        label: `Unit ${i + 1}`,
+        serialNumber: i === 0 ? form.serialNumber.trim() : "",
+        status: "Available" as ItemStatus,
+      }))
+    );
+    set("serialNumber", "");
+    setUnitsError("");
+  }
+
+  /**
+   * Drop back to a plain quantity group. The reverse of startTrackingUnits:
+   * the first serial moves back onto the item so untracking doesn't quietly
+   * throw it away, and the quantity keeps whatever the units added up to.
+   */
+  function stopTrackingUnits() {
+    const firstSerial = units.find((u) => u.serialNumber.trim())?.serialNumber;
+    setForm((f) => ({
+      ...f,
+      quantity: String(units.filter((u) => u.status !== "Retired").length),
+      serialNumber: firstSerial?.trim() ?? f.serialNumber,
+    }));
+    setUnits([]);
+    setUnitsError("");
+  }
+
+  function removeUnit(key: string) {
+    setUnits((list) => list.filter((u) => u.key !== key));
+    setUnitsError("");
+  }
+
+  /** Mirrors the server's check (lib/data/units.ts) so it fails before the trip. */
+  function validateUnits(): boolean {
+    if (units.some((u) => !u.label.trim())) {
+      setUnitsError("Every unit needs a label.");
+      return false;
+    }
+
+    const seen = new Set<string>();
+    for (const unit of units) {
+      const serial = unit.serialNumber.trim().toLowerCase();
+      if (!serial) continue;
+      if (seen.has(serial)) {
+        setUnitsError(
+          `Serial number "${unit.serialNumber.trim()}" is on more than one unit. Each unit needs its own.`
+        );
+        return false;
+      }
+      seen.add(serial);
+    }
+
+    setUnitsError("");
+    return true;
   }
 
   function validate(): boolean {
@@ -196,9 +334,13 @@ function ItemFormContent() {
     if (!form.department) next.department = "Department is required.";
     if (!form.assetType) next.assetType = "Asset Type is required.";
 
-    const qty = Number(form.quantity);
-    if (form.quantity.trim() === "" || !Number.isInteger(qty) || qty < 0)
-      next.quantity = "Quantity must be a whole number of 0 or more.";
+    // Quantity is derived from the unit list once units exist, so there is
+    // nothing for the user to get wrong.
+    if (!tracksUnits) {
+      const qty = Number(form.quantity);
+      if (form.quantity.trim() === "" || !Number.isInteger(qty) || qty < 0)
+        next.quantity = "Quantity must be a whole number of 0 or more.";
+    }
 
     if (form.minStockThreshold.trim() !== "") {
       const min = Number(form.minStockThreshold);
@@ -293,8 +435,19 @@ function ItemFormContent() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validate()) return;
+    // Both run — a form with a bad name and a duplicate serial should show
+    // both, not one and then the other on the next attempt.
+    const formOk = validate();
+    const unitsOk = validateUnits();
+    if (!formOk || !unitsOk) return;
     if (submitting) return;
+
+    const unitPayload: ItemUnitInput[] = units.map((u) => ({
+      id: u.id,
+      label: u.label.trim(),
+      serial_number: u.serialNumber.trim() || null,
+      status: u.status,
+    }));
 
     const payload: NewItemInput = {
       item_name: form.name.trim(),
@@ -313,8 +466,10 @@ function ItemFormContent() {
       location: form.location.trim() || null,
       date_acquired: form.dateAcquired || null,
       remarks: form.remarks.trim() || null,
-      serial_number: form.serialNumber.trim() || null,
+      // Serials live on the units once an item is unit-tracked.
+      serial_number: tracksUnits ? null : form.serialNumber.trim() || null,
       images: form.images,
+      units: unitPayload,
     };
 
     setSubmitting(true);
@@ -402,22 +557,24 @@ function ItemFormContent() {
             )}
           </div>
 
-          <div>
-            <Label htmlFor="serialNumber">Serial Number</Label>
-            <Input
-              id="serialNumber"
-              aria-invalid={Boolean(errors.serialNumber)}
-              value={form.serialNumber}
-              maxLength={100}
-              onChange={(e) => set("serialNumber", e.target.value)}
-              placeholder="Manufacturer serial or asset tag (optional)"
-            />
-            {errors.serialNumber && (
-              <span className="field-error">
-                <ExclamationTriangleIcon className="size-[13px]" /> {errors.serialNumber}
-              </span>
-            )}
-          </div>
+          {!tracksUnits && (
+            <div>
+              <Label htmlFor="serialNumber">Serial Number</Label>
+              <Input
+                id="serialNumber"
+                aria-invalid={Boolean(errors.serialNumber)}
+                value={form.serialNumber}
+                maxLength={100}
+                onChange={(e) => set("serialNumber", e.target.value)}
+                placeholder="Manufacturer serial or asset tag (optional)"
+              />
+              {errors.serialNumber && (
+                <span className="field-error">
+                  <ExclamationTriangleIcon className="size-[13px]" /> {errors.serialNumber}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
@@ -500,14 +657,22 @@ function ItemFormContent() {
                 type="number"
                 min={0}
                 step={1}
+                // Once units are tracked the count comes from the list below —
+                // the database derives it, so an editable box here would only
+                // offer a number the save throws away.
+                readOnly={tracksUnits}
                 aria-invalid={Boolean(errors.quantity)}
-                value={form.quantity}
+                value={tracksUnits ? String(units.filter((u) => u.status !== "Retired").length) : form.quantity}
                 onChange={(e) => set("quantity", e.target.value)}
               />
-              {errors.quantity && (
-                <span className="field-error">
-                  <ExclamationTriangleIcon className="size-[13px]" /> {errors.quantity}
-                </span>
+              {tracksUnits ? (
+                <p className="field-hint">Counted from the units below.</p>
+              ) : (
+                errors.quantity && (
+                  <span className="field-error">
+                    <ExclamationTriangleIcon className="size-[13px]" /> {errors.quantity}
+                  </span>
+                )
               )}
             </div>
 
@@ -521,7 +686,7 @@ function ItemFormContent() {
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {units.map((u) => (
+                  {unitsOfMeasure.map((u) => (
                     <SelectItem key={u} value={u}>
                       {u}
                     </SelectItem>
@@ -577,13 +742,15 @@ function ItemFormContent() {
           {isEdit && (
             <div>
               <Label>Status</Label>
-              {hasOpenDefect ? (
+              {hasOpenDefect || tracksUnits ? (
                 <>
                   <div>
                     <StatusBadge status={editingItem!.status} />
                   </div>
                   <p className="field-hint">
-                    Status is driven by the Defect Log while a defect is open.
+                    {tracksUnits
+                      ? "Summarised from the units below — one defective unit marks the whole item Defective."
+                      : "Status is driven by the Defect Log while a defect is open."}
                   </p>
                 </>
               ) : (
@@ -605,6 +772,137 @@ function ItemFormContent() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Units & Serial Numbers">
+          {!tracksUnits ? (
+            <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border p-4">
+              <p className="text-sm text-muted-foreground">
+                This item is counted as a group — one status and one serial for
+                all {form.quantity || "0"} of them. Track them individually if
+                each piece has its own serial number, or if one can break while
+                the others keep working.
+              </p>
+              <Button type="button" variant="secondary" size="sm" onClick={startTrackingUnits}>
+                <PlusIcon className="size-3.5" /> Track units individually
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                One row per physical unit. Each keeps its own serial number and
+                status, so a defect logged against one leaves the rest in
+                service.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {units.map((unit) => {
+                  // Same rule as the item above: the Defect Log owns a unit's
+                  // status while it is broken, so it isn't editable here.
+                  const defectDriven =
+                    unit.status === "Defective" || unit.status === "Under Repair";
+                  return (
+                    <div
+                      key={unit.key}
+                      className="flex flex-wrap items-end gap-2 rounded-md border border-border p-3"
+                    >
+                      <div className="min-w-30 flex-1">
+                        <Label htmlFor={`unit-label-${unit.key}`}>Label *</Label>
+                        <Input
+                          id={`unit-label-${unit.key}`}
+                          value={unit.label}
+                          maxLength={60}
+                          onChange={(e) => setUnit(unit.key, { label: e.target.value })}
+                          placeholder="e.g. Left"
+                        />
+                      </div>
+
+                      <div className="min-w-40 flex-2">
+                        <Label htmlFor={`unit-serial-${unit.key}`}>Serial Number</Label>
+                        <Input
+                          id={`unit-serial-${unit.key}`}
+                          value={unit.serialNumber}
+                          maxLength={100}
+                          onChange={(e) =>
+                            setUnit(unit.key, { serialNumber: e.target.value })
+                          }
+                          placeholder="Optional"
+                        />
+                      </div>
+
+                      <div className="min-w-35">
+                        <Label htmlFor={`unit-status-${unit.key}`}>Status</Label>
+                        {defectDriven ? (
+                          <div className="flex h-9 items-center">
+                            <StatusBadge status={unit.status} />
+                          </div>
+                        ) : (
+                          <Select
+                            value={unit.status}
+                            onValueChange={(v) =>
+                              setUnit(unit.key, { status: v as ItemStatus })
+                            }
+                          >
+                            <SelectTrigger id={`unit-status-${unit.key}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {UNIT_STATUS_CHOICES.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {s}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="mb-1"
+                        aria-label={`Remove ${unit.label || "unit"}`}
+                        title={
+                          defectDriven
+                            ? "Close the open defect before removing this unit"
+                            : undefined
+                        }
+                        disabled={defectDriven}
+                        onClick={() => removeUnit(unit.key)}
+                      >
+                        <XMarkIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {unitsError && (
+                <span className="field-error">
+                  <ExclamationTriangleIcon className="size-[13px]" /> {unitsError}
+                </span>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={addUnitRow}>
+                  <PlusIcon className="size-3.5" /> Add unit
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={stopTrackingUnits}
+                >
+                  Stop tracking individually
+                </Button>
+              </div>
+              <p className="field-hint">
+                Stopping removes every unit row and its serial numbers on save,
+                and returns the item to a plain quantity.
+              </p>
             </div>
           )}
         </Section>

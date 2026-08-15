@@ -33,7 +33,7 @@ function initials(name: string) {
 type Toast = { message: string; tone: "good" | "bad" } | null;
 
 export default function SettingsClient() {
-  const { categories, units, profiles } = useReference();
+  const { categories, units, departments, profiles } = useReference();
   const { data: usage } = useQuery(taxonomyUsageQuery());
   const taxonomy = useTaxonomyMutations();
   const logAccessEmail = useLogAccessEmail();
@@ -50,10 +50,21 @@ export default function SettingsClient() {
       <div>
         <h1 className="h-headline">Settings</h1>
         <p className="mt-1.5 text-muted-foreground">
-          Manage categories, units of measure, and the five user accounts. Every
-          change here is written to the audit trail.
+          Manage departments, categories, units of measure, and the five user
+          accounts. Every change here is written to the audit trail.
         </p>
       </div>
+
+      <TaxonomyManager
+        title="Manage Departments"
+        noun="Department"
+        terms={departments}
+        usage={(name) => usage?.departments[name] ?? 0}
+        add={taxonomy.addDepartment}
+        rename={taxonomy.renameDepartment}
+        remove={taxonomy.deleteDepartment}
+        onToast={flash}
+      />
 
       <TaxonomyManager
         title="Manage Categories"

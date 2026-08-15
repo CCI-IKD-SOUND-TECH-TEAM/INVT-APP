@@ -72,7 +72,11 @@ export default function DefectCardList({
                     {d.item_name}
                   </span>
                   <span className="truncate text-xs text-ink-faint">
-                    {categoryName(d.category_id)}
+                    {/* Names the physical unit when the defect is scoped to one,
+                        so two speakers don't read identically in the list. */}
+                    {d.unit_label
+                      ? `${d.unit_label} · ${categoryName(d.category_id)}`
+                      : categoryName(d.category_id)}
                   </span>
                 </span>
                 <SeverityLabel severity={d.severity} />

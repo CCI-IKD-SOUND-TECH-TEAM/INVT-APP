@@ -16,7 +16,11 @@ export type AssetType =
   | "Electronics"
   | "Other";
 
-export type DepartmentName = "Sound" | "Light" | "Projection";
+/**
+ * Departments are user-managed taxonomy (Settings), not a fixed set — Sound,
+ * Light, Projection and Power are seeded, and staff add their own.
+ */
+export type DepartmentName = string;
 
 export interface Profile {
   id: string;
@@ -65,13 +69,71 @@ export interface InventoryItem {
   images: string[];
   unit_of_measure: string;
   asset_type: AssetType;
+
+  /**
+   * The item's individual units, loaded with the detail read. Empty for an item
+   * that isn't unit-tracked — `serial_number` and `status` above describe the
+   * whole group in that case.
+   */
+  units: ItemUnit[];
 }
 
 /** Shape the item form / bulk import hand to `createItem`. */
 export type NewItemInput = Omit<
   InventoryItem,
-  "id" | "status" | "created_by" | "updated_by" | "created_at" | "updated_at"
->;
+  | "id"
+  | "status"
+  | "created_by"
+  | "updated_by"
+  | "created_at"
+  | "updated_at"
+  | "units"
+> & {
+  /**
+   * Omitted (rather than empty) leaves any existing unit rows untouched — an
+   * update that only changes the location must not silently delete the serials.
+   */
+  units?: ItemUnitInput[];
+};
+
+/**
+ * One physical unit inside an item's quantity — the individual speaker, not the
+ * pair. Optional per item: an item with no units is a plain quantity group and
+ * behaves exactly as it did before units existed.
+ *
+ * `status` is tracked per unit, so one speaker can be Defective while its twin
+ * stays Available. `serial_number` is unique across the whole inventory.
+ */
+export interface ItemUnit {
+  id: string;
+  item_id: string;
+  /** "Speaker 1", "Left", "Stage Right" — always set, so pickers can label it. */
+  label: string;
+  serial_number?: string | null;
+  status: ItemStatus;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The unit fields the item form submits — no ids for rows being created. */
+export interface ItemUnitInput {
+  /** Present for an existing row, absent for a new one. */
+  id?: string;
+  label: string;
+  serial_number: string | null;
+  status: ItemStatus;
+  notes?: string | null;
+}
+
+/**
+ * A partial item update. Same as `Partial<InventoryItem>` except that `units`
+ * carries the form's input shape (new rows have no id yet) rather than the
+ * fully-materialised rows a read returns.
+ */
+export type ItemPatch = Omit<Partial<InventoryItem>, "units"> & {
+  units?: ItemUnitInput[];
+};
 
 export interface ItemImage {
   id: string;
@@ -84,6 +146,11 @@ export interface ItemImage {
 export interface Defect {
   id: string;
   item_id: string;
+  /**
+   * Which physical unit is broken. Null means the defect is against the whole
+   * item — either it isn't unit-tracked, or every unit is affected.
+   */
+  item_unit_id?: string | null;
   description: string;
   date_reported: string;
   reported_by: string;

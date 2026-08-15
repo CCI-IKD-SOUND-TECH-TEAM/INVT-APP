@@ -22,7 +22,10 @@ export interface ReferenceValue {
 
   /** Sorted display names. */
   categories: string[];
-  /** Canonical order — Sound leads; unknown departments follow alphabetically. */
+  /**
+   * Canonical order — the seeded departments lead in the order the church
+   * lists them; anything staff add later follows alphabetically.
+   */
   departments: string[];
   units: string[];
   users: string[];
@@ -36,7 +39,7 @@ export interface ReferenceValue {
   isLoading: boolean;
 }
 
-const DEPARTMENT_ORDER = ["Sound", "Light", "Projection"];
+const DEPARTMENT_ORDER = ["Sound", "Light", "Projection", "Power"];
 
 export function useReference(): ReferenceValue {
   const { data, isLoading } = useQuery(referenceQuery());

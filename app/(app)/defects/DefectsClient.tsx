@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { defectsQuery, itemOptionsQuery } from "@/lib/queries";
+import { defectsQuery, itemOptionsQuery, itemQuery } from "@/lib/queries";
 import { useReference } from "@/lib/queries/use-reference";
 import {
   useLogDefect,
@@ -31,6 +31,13 @@ import { IconCheck as CheckIcon, IconAlertTriangle as ExclamationTriangleIcon, I
 import { cn } from "@/lib/utils";
 
 const TODAY = new Date().toISOString().slice(0, 10);
+
+/**
+ * Sentinel for "the whole item, not one unit" in the unit picker. A Radix
+ * `SelectItem` cannot carry an empty value, so the absence of a unit needs a
+ * value of its own.
+ */
+const ALL_UNITS = "__all__";
 
 function daysOpen(dateReported: string) {
   const start = new Date(dateReported).getTime();
@@ -168,6 +175,13 @@ function DefectLogContent() {
                   <TableCell>
                     <strong className="block text-[0.875rem] font-bold">
                       {d.item_name}
+                      {/* Which physical unit, when the defect names one. */}
+                      {d.unit_label && (
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          · {d.unit_label}
+                        </span>
+                      )}
                     </strong>
                     <span className="text-xs text-ink-faint">
                       {categoryName(d.category_id)}
@@ -242,6 +256,14 @@ function DefectDrawer({
           <SheetHeader>
             <div>
               <SheetTitle>{defect.item_name}</SheetTitle>
+              {defect.unit_label && (
+                <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+                  {defect.unit_label}
+                  {defect.unit_serial_number
+                    ? ` · Serial ${defect.unit_serial_number}`
+                    : ""}
+                </p>
+              )}
               <div className="mt-2 flex items-center gap-2.5">
                 <SeverityLabel severity={defect.severity} />
                 <StatusBadge status={defect.status} />
@@ -373,6 +395,21 @@ function LogDefectModal({
   const { data: items = [] } = useQuery(itemOptionsQuery());
   const logDefect = useLogDefect();
   const [itemId, setItemId] = useState(initialItemId ?? "");
+  const [unitId, setUnitId] = useState("");
+
+  // The chosen item's detail, purely for its unit list. Skipped until an item
+  // is picked, and most items have no units — this is the cheapest way to ask
+  // without loading units for every item in the picker.
+  const { data: selectedItem } = useQuery({
+    ...itemQuery(itemId),
+    enabled: Boolean(itemId),
+  });
+
+  // Retired units aren't in service, so they can't acquire a new defect.
+  const selectableUnits = (selectedItem?.units ?? []).filter(
+    (u) => u.status !== "Retired"
+  );
+
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<DefectSeverity | "">("");
   const [dateReported, setDateReported] = useState(TODAY);
@@ -383,6 +420,10 @@ function LogDefectModal({
     e.preventDefault();
     const next: Record<string, string> = {};
     if (!itemId) next.itemId = "Select which item this defect affects.";
+    // A unit-tracked item needs to know which one — logging against the group
+    // would mark every unit defective, which is the bug this replaces.
+    if (selectableUnits.length > 0 && !unitId)
+      next.unitId = "Select which unit is affected.";
     if (!description.trim()) next.description = "Defect description is required.";
     else if (description.length > 500)
       next.description = "Description must be 500 characters or fewer.";
@@ -396,6 +437,9 @@ function LogDefectModal({
     try {
       await logDefect.mutateAsync({
         item_id: itemId,
+        // "all" is the deliberate whole-item choice; null is also what an item
+        // with no units sends.
+        item_unit_id: unitId && unitId !== ALL_UNITS ? unitId : null,
         description: description.trim(),
         severity: severity as DefectSeverity,
         date_reported: dateReported,
@@ -411,7 +455,14 @@ function LogDefectModal({
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <div>
           <Label htmlFor="defItem">Item *</Label>
-          <Select value={itemId} onValueChange={setItemId}>
+          <Select
+            value={itemId}
+            onValueChange={(v) => {
+              setItemId(v);
+              // The old choice belongs to the old item's unit list.
+              setUnitId("");
+            }}
+          >
             <SelectTrigger id="defItem" className={errors.itemId ? "border-brand" : undefined}>
               <SelectValue placeholder="Select an item…" />
             </SelectTrigger>
@@ -429,6 +480,38 @@ function LogDefectModal({
             </span>
           )}
         </div>
+
+        {/* Only appears for an item that tracks its units — most don't. */}
+        {selectableUnits.length > 0 && (
+          <div>
+            <Label htmlFor="defUnit">Which one? *</Label>
+            <Select value={unitId} onValueChange={setUnitId}>
+              <SelectTrigger id="defUnit" className={errors.unitId ? "border-brand" : undefined}>
+                <SelectValue placeholder="Select a unit…" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectableUnits.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.label}
+                    {u.serial_number ? ` · ${u.serial_number}` : ""}
+                  </SelectItem>
+                ))}
+                <SelectItem value={ALL_UNITS}>
+                  All {selectableUnits.length} of them
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="field-hint">
+              The repair is tracked against the unit you pick, so the others
+              keep their own serial numbers and history.
+            </p>
+            {errors.unitId && (
+              <span className="field-error">
+                <ExclamationTriangleIcon className="size-[13px]" /> {errors.unitId}
+              </span>
+            )}
+          </div>
+        )}
 
         <div>
           <Label htmlFor="defDesc">Defect Description *</Label>
@@ -639,7 +722,8 @@ function NotRepairableModal({
   defect,
   onClose,
 }: {
-  defect: Defect;
+  /** Wants the joined shape: the follow-up copy names the affected unit. */
+  defect: DefectWithItem;
   onClose: () => void;
 }) {
   const markNotRepairable = useMarkNotRepairable();
@@ -709,7 +793,13 @@ function NotRepairableModal({
       ) : (
         <form onSubmit={submitFollowUp} className="flex flex-col gap-4" noValidate>
           <p className="text-[0.8125rem] text-muted-foreground">
-            The system won&apos;t guess for you — choose what happens to the item.
+            The system won&apos;t guess for you — choose what happens to{" "}
+            {/* A unit-scoped defect retires that unit, not the whole group, so
+                the copy has to name the right thing. */}
+            {defect.unit_label
+              ? `${defect.unit_label} (the rest of ${defect.item_name} is unaffected)`
+              : "the item"}
+            .
           </p>
 
           <RadioGroup
@@ -724,9 +814,13 @@ function NotRepairableModal({
             >
               <RadioGroupItem value="retire" />
               <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold">Retire this item</span>
+                <span className="text-sm font-bold">
+                  Retire {defect.unit_label ? "this unit" : "this item"}
+                </span>
                 <span className="text-xs text-ink-faint">
-                  Moves it out of active inventory for good.
+                  {defect.unit_label
+                    ? "Drops it out of the item's count for good; the other units carry on."
+                    : "Moves it out of active inventory for good."}
                 </span>
               </span>
             </label>

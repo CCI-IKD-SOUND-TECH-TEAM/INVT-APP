@@ -5,7 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import type { TaxonomyUsage } from "@/lib/api-types";
 
 /**
- * How many items each category and unit is attached to.
+ * How many items each category, unit of measure and department is attached to.
  *
  * Settings renders these next to every taxonomy row, so the counts have to be
  * available synchronously — one grouped query beats one count request per term.
@@ -19,10 +19,15 @@ export async function getTaxonomyUsage(): Promise<TaxonomyUsage> {
 
   if (error) throw new Error(`getTaxonomyUsage failed: ${error.message}`);
 
-  const usage: TaxonomyUsage = { categories: {}, units: {} };
+  const usage: TaxonomyUsage = { categories: {}, units: {}, departments: {} };
+  const buckets: Record<string, Record<string, number>> = {
+    category: usage.categories,
+    unit: usage.units,
+    department: usage.departments,
+  };
   for (const row of data ?? []) {
-    const bucket = row.kind === "category" ? usage.categories : usage.units;
-    bucket[row.name as string] = row.count as number;
+    const bucket = buckets[row.kind as string];
+    if (bucket) bucket[row.name as string] = row.count as number;
   }
   return usage;
 }

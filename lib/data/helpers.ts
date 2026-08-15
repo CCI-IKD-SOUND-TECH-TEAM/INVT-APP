@@ -74,10 +74,73 @@ export async function fetchItemById(
 ): Promise<InventoryItem> {
   const { data } = await supabase
     .from("inventory_items")
-    .select("*, item_images(url, display_order)")
+    .select("*, item_images(url, display_order), item_units(*)")
     .eq("id", id)
     .single();
   return mapItem(data as Record<string, unknown>);
+}
+
+/**
+ * Recompute an item's status from its unit rows.
+ *
+ * The rule is "worst unit wins": one broken speaker makes the item Defective,
+ * and the item only comes back once its last broken unit does. Both defect
+ * writes and direct unit edits call this, so there is one rule rather than two.
+ *
+ * Deliberately NOT "stays Available while a sibling still works". Defective is
+ * one word with one meaning across the whole app — the Defective Assets tile,
+ * the filter chips and the `?status=Defective` links all read this column, so an
+ * item that reported Available with a broken unit inside would vanish from
+ * every one of them. How much of the item is out of service is carried
+ * alongside the badge instead, by `defective_unit_count` on the list view.
+ *
+ * No-ops for an item with no units (its status is entered directly) and for a
+ * Retired item (retiring is a deliberate act, not something a repair undoes).
+ */
+export async function rollupItemStatus(
+  supabase: Awaited<ReturnType<typeof getSupabase>>,
+  itemId: string,
+  actorId: string
+): Promise<void> {
+  const [{ data: units }, { data: item }] = await Promise.all([
+    supabase.from("item_units").select("status").eq("item_id", itemId),
+    supabase
+      .from("inventory_items")
+      .select("status")
+      .eq("id", itemId)
+      .maybeSingle(),
+  ]);
+
+  const rows = (units ?? []) as { status: InventoryItem["status"] }[];
+  const current = item?.status as InventoryItem["status"] | undefined;
+  if (rows.length === 0 || !current || current === "Retired") return;
+
+  const live = rows.filter((u) => u.status !== "Retired");
+
+  let next: InventoryItem["status"];
+  if (live.length === 0) {
+    // Every unit retired one at a time. There is no hardware left in service,
+    // and the quantity trigger has already taken the item to 0 — leaving it
+    // Defective would strand an empty row in the Defective Assets count.
+    // Reversible: the inventory list's reactivate action still applies.
+    next = "Retired";
+  } else if (live.some((u) => u.status === "Defective")) {
+    // An unaddressed unit outranks one already in the shop.
+    next = "Defective";
+  } else if (live.some((u) => u.status === "Under Repair")) {
+    next = "Under Repair";
+  } else {
+    // Every unit is usable again. Only clear a broken status — an item marked
+    // In Use is still In Use.
+    if (current !== "Defective" && current !== "Under Repair") return;
+    next = "Available";
+  }
+
+  if (next === current) return;
+  await supabase
+    .from("inventory_items")
+    .update({ status: next, updated_by: actorId })
+    .eq("id", itemId);
 }
 
 export async function fetchDefectById(

@@ -3,10 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   addCategory as addCategoryAction,
+  addDepartment as addDepartmentAction,
   addUnit as addUnitAction,
   deleteCategory as deleteCategoryAction,
+  deleteDepartment as deleteDepartmentAction,
   deleteUnit as deleteUnitAction,
   renameCategory as renameCategoryAction,
+  renameDepartment as renameDepartmentAction,
   renameUnit as renameUnitAction,
 } from "@/app/actions/taxonomy";
 import { logAccessEmail as logAccessEmailAction } from "@/app/actions/audit";
@@ -29,7 +32,8 @@ function useTaxonomyInvalidation() {
     // Reference holds the name lists; usage holds the counts beside them.
     queryClient.invalidateQueries({ queryKey: queryKeys.reference() });
     queryClient.invalidateQueries({ queryKey: queryKeys.taxonomyUsage() });
-    // A unit rename rewrites unit_of_measure across items.
+    // A unit rename rewrites unit_of_measure across items, and the list view
+    // carries category and department names on every row.
     queryClient.invalidateQueries({ queryKey: queryKeys.items.all() });
     queryClient.invalidateQueries({ queryKey: ["activity"] });
   };
@@ -63,6 +67,11 @@ export function useTaxonomyMutations() {
     addUnit: useTaxonomyMutation<[string]>(addUnitAction),
     renameUnit: useTaxonomyMutation<[string, string]>(renameUnitAction),
     deleteUnit: useTaxonomyMutation<[string]>(deleteUnitAction),
+    addDepartment: useTaxonomyMutation<[string]>(addDepartmentAction),
+    renameDepartment: useTaxonomyMutation<[string, string]>(
+      renameDepartmentAction
+    ),
+    deleteDepartment: useTaxonomyMutation<[string]>(deleteDepartmentAction),
   };
 }
 
