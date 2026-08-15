@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Lato } from "next/font/google";
 import "./globals.css";
+import Providers from "./providers";
 import { cn } from "@/lib/utils";
 
 const anton = Anton({
@@ -29,7 +30,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={cn(anton.variable, lato.variable, "font-sans")}>
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

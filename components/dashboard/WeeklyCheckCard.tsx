@@ -7,7 +7,9 @@ import {
   IconCircleDashed as CircleDashedIcon,
   IconProgress as ProgressIcon,
 } from "@tabler/icons-react";
-import { useStore } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import { checksQuery } from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
 import { CHECK_TYPE_LABEL, weekStartIso } from "@/lib/checks";
 import type { CheckSession, CheckType } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +26,10 @@ const ROW_GRID = "grid grid-cols-[1fr_4.75rem_4.75rem] items-center gap-x-2";
  * session when one exists, otherwise to the checks landing page.
  */
 export default function WeeklyCheckCard() {
-  const { departments, departmentIdByName, checkSessions } = useStore();
+  const { departments, departmentIdByName } = useReference();
+  // Only this week's sessions are rendered, so ask for one week — the checks
+  // page asks for twelve and keeps its own cache entry.
+  const { data: checkSessions = [] } = useQuery(checksQuery(1));
   const currentWeek = weekStartIso();
 
   const cell = (deptId: string | undefined, type: CheckType) =>

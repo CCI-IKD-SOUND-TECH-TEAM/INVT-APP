@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { IconAlertTriangle as ExclamationTriangleIcon } from "@tabler/icons-react";
 import StatusBadge from "@/components/StatusBadge";
-import type { InventoryItem, ItemStatus } from "@/lib/types";
-import { isLowStock } from "@/lib/inventory";
+import type { ItemListRow, ItemStatusCounts } from "@/lib/api-types";
+import type { ItemStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,20 +26,23 @@ const CHIP_STATUSES: ItemStatus[] = [
 ];
 
 export function StatusChips({
-  items,
+  counts,
   statusFilter,
   onSelect,
   className,
 }: {
-  /** Every item, retired included — the chip counts are absolute. */
-  items: InventoryItem[];
+  /**
+   * Absolute counts across every item, retired included — computed by
+   * inventory_status_counts, not derived from the visible page.
+   */
+  counts: ItemStatusCounts | undefined;
   statusFilter: Set<ItemStatus>;
   /** `null` clears the filter ("All"). */
   onSelect: (status: ItemStatus | null) => void;
   className?: string;
 }) {
   const allActive = statusFilter.size === 0;
-  const totalCount = items.filter((i) => i.status !== "Retired").length;
+  const totalCount = counts?.totalActive ?? 0;
 
   return (
     <div
@@ -66,7 +69,7 @@ export function StatusChips({
 
       {CHIP_STATUSES.map((status) => {
         const active = statusFilter.has(status);
-        const count = items.filter((i) => i.status === status).length;
+        const count = counts?.byStatus[status] ?? 0;
         return (
           <button
             key={status}
@@ -90,13 +93,11 @@ export function StatusChips({
 
 export default function ItemCardList({
   items,
-  categoryName,
   highlightId,
   className,
 }: {
-  /** The page's already-filtered, already-sorted slice. */
-  items: InventoryItem[];
-  categoryName: (id: string) => string;
+  /** The page's already-filtered, already-sorted slice — sorted by Postgres. */
+  items: ItemListRow[];
   highlightId?: string | null;
   className?: string;
 }) {
@@ -110,9 +111,7 @@ export default function ItemCardList({
 
   return (
     <ul className={cn("flex flex-col gap-2", className)}>
-      {items.map((item) => {
-        const lowStock = isLowStock(item);
-        return (
+      {items.map((item) => (
           <li key={item.id}>
             <Link
               href={`/inventory/new?id=${item.id}`}
@@ -127,9 +126,9 @@ export default function ItemCardList({
               <span className="flex items-center justify-between gap-3">
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate text-[0.8125rem] text-muted-foreground">
-                    {categoryName(item.category_id)}
+                    {item.category_name}
                   </span>
-                  {lowStock && (
+                  {item.is_low_stock && (
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-status-caution">
                       <ExclamationTriangleIcon className="size-[11px]" /> Low
                       stock
@@ -140,8 +139,7 @@ export default function ItemCardList({
               </span>
             </Link>
           </li>
-        );
-      })}
+      ))}
     </ul>
   );
 }

@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { useStore } from "@/lib/store";
+import { useSession } from "@/lib/session";
 import { signOut } from "@/app/actions/auth";
 
 const NAV = [
@@ -44,7 +44,7 @@ function initials(name: string) {
 export default function AppSidebar() {
   const pathname = usePathname();
   const { state, isMobile, setOpenMobile } = useSidebar();
-  const { currentUser } = useStore();
+  const currentUser = useSession();
   const collapsed = state === "collapsed" && !isMobile;
   const [loggingOut, setLoggingOut] = useState(false);
 

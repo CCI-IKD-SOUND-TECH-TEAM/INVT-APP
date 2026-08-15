@@ -47,7 +47,6 @@ import type {
   InventoryItem,
   NewItemInput,
   Profile,
-  SessionUser,
 } from "./types";
 
 export type { NewItemInput } from "./types";
@@ -73,8 +72,6 @@ export interface StoreSeed {
 }
 
 interface StoreValue {
-  /** The signed-in staff member. Stamped onto every audit entry (server-side). */
-  currentUser: SessionUser;
   items: InventoryItem[];
   defects: Defect[];
   activity: AuditEntry[];
@@ -148,12 +145,9 @@ interface StoreValue {
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({
-  currentUser,
   seed,
   children,
 }: {
-  /** Resolved from the Supabase session in app/(app)/layout.tsx. */
-  currentUser: SessionUser;
   /** Server-fetched initial data (lib/data/inventory.ts getStoreData). */
   seed: StoreSeed;
   children: React.ReactNode;
@@ -590,7 +584,6 @@ export function StoreProvider({
 
   const value = useMemo<StoreValue>(
     () => ({
-      currentUser,
       items,
       defects,
       activity,
@@ -633,7 +626,6 @@ export function StoreProvider({
       logAccessEmail,
     }),
     [
-      currentUser,
       items,
       defects,
       activity,

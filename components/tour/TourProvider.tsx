@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useSidebar } from "@/components/ui/sidebar";
-import { useStore } from "@/lib/store";
+import { useSession } from "@/lib/session";
 import { completeTour } from "@/app/actions/tour";
 
 const TourRunner = dynamic(() => import("./TourRunner"), { ssr: false });
@@ -37,7 +37,7 @@ export default function TourProvider({
   autoStart: boolean;
   children: React.ReactNode;
 }) {
-  const { currentUser } = useStore();
+  const currentUser = useSession();
   const { isMobile, setOpen } = useSidebar();
   const [active, setActive] = useState(false);
   const [session, setSession] = useState(0);

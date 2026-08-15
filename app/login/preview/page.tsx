@@ -14,17 +14,25 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { StoreProvider } from "@/lib/store";
+import { SessionProvider } from "@/lib/session";
 import { CURRENT_USER, SEED } from "./fixture";
+import { usePreviewCache } from "./seed-cache";
 
-import DashboardPage from "@/app/(app)/dashboard/page";
-import InventoryPage from "@/app/(app)/inventory/page";
-import DefectsPage from "@/app/(app)/defects/page";
-import ChecksPage from "@/app/(app)/checks/page";
-import SettingsPage from "@/app/(app)/settings/page";
-import ReportsPage from "@/app/(app)/reports/page";
+// Migrated screens are mounted as their client half — the `page.tsx` above
+// them is now a server component that prefetches, and a client harness cannot
+// import one. usePreviewCache() populates the query cache those clients read,
+// so the fixture still drives the render.
+import DashboardClient from "@/app/(app)/dashboard/DashboardClient";
+// Each route's `page.tsx` is now a server wrapper; the harness mounts the
+// client half directly.
+import InventoryPage from "@/app/(app)/inventory/InventoryClient";
+import DefectsPage from "@/app/(app)/defects/DefectsClient";
+import ChecksPage from "@/app/(app)/checks/ChecksClient";
+import SettingsPage from "@/app/(app)/settings/SettingsClient";
+import ReportsPage from "@/app/(app)/reports/ReportsClient";
 
 const SCREENS: Record<string, React.ComponentType> = {
-  dashboard: DashboardPage,
+  dashboard: DashboardClient,
   inventory: InventoryPage,
   defects: DefectsPage,
   checks: ChecksPage,
@@ -75,15 +83,21 @@ function OverflowProbe() {
 function PreviewInner() {
   const params = useSearchParams();
   const key = params.get("screen") ?? "dashboard";
-  const Screen = SCREENS[key] ?? DashboardPage;
+  const Screen = SCREENS[key] ?? DashboardClient;
+
+  // Fills the React Query cache from the same fixture the store gets, so
+  // migrated and un-migrated screens render from one source of truth.
+  usePreviewCache();
 
   return (
-    <StoreProvider currentUser={CURRENT_USER} seed={SEED}>
-      <OverflowProbe />
-      <AppShell>
-        <Screen />
-      </AppShell>
-    </StoreProvider>
+    <SessionProvider currentUser={CURRENT_USER}>
+      <StoreProvider seed={SEED}>
+        <OverflowProbe />
+        <AppShell>
+          <Screen />
+        </AppShell>
+      </StoreProvider>
+    </SessionProvider>
   );
 }
 

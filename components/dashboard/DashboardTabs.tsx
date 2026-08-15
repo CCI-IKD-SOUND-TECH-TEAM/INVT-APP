@@ -17,14 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { useStore } from "@/lib/store";
-import type { AuditEntry, InventoryItem } from "@/lib/types";
+import type { LowStockItem } from "@/lib/api-types";
+import type { AuditEntry } from "@/lib/types";
 
 // Items at/below a third of their threshold (or with ≤1 left) read critical; others caution.
-function stockRatio(i: InventoryItem) {
+function stockRatio(i: LowStockItem) {
   return i.quantity / (i.minimum_stock_threshold || 1);
 }
-function stockTone(i: InventoryItem) {
+function stockTone(i: LowStockItem) {
   return i.quantity <= 1 || stockRatio(i) <= 0.34
     ? "text-status-critical"
     : "text-status-caution";
@@ -62,9 +62,8 @@ export default function DashboardTabs({
   lowStockItems,
 }: {
   activity: AuditEntry[];
-  lowStockItems: InventoryItem[];
+  lowStockItems: LowStockItem[];
 }) {
-  const { categoryName } = useStore();
   return (
     <Card className="gap-0 p-0">
       <Tabs defaultValue="activity" className="gap-0">
@@ -147,8 +146,10 @@ export default function DashboardTabs({
                           {i.item_name}
                         </Link>
                       </TableCell>
+                      {/* Resolved by the dashboard_stats join — no client-side
+                          id → name lookup needed. */}
                       <TableCell className="text-muted-foreground">
-                        {categoryName(i.category_id)}
+                        {i.category_name}
                       </TableCell>
                       <TableCell
                         className={cn(

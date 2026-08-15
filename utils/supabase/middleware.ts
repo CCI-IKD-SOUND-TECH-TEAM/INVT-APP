@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
-import type { User } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -8,13 +7,13 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 /**
  * Refreshes the auth session and reports who (if anyone) is signed in.
  *
- * Returns the user alongside the response because proxy.ts needs both: the
- * response carries the refreshed cookies, and the user decides whether to
- * redirect. Fetching the user twice would mean two round trips per request.
+ * Returns the user id alongside the response because proxy.ts needs both: the
+ * response carries the refreshed cookies, and the identity decides whether to
+ * redirect. Resolving it twice would mean two round trips per request.
  */
 export const createClient = async (
   request: NextRequest
-): Promise<{ response: NextResponse; user: User | null }> => {
+): Promise<{ response: NextResponse; userId: string | null }> => {
   // Create an unmodified response
   let supabaseResponse = NextResponse.next({
     request: {
@@ -43,11 +42,20 @@ export const createClient = async (
 
   // Touching the session is what triggers the cookie refresh above. Without
   // this call the helper returns a response that never renews the auth cookies.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // getClaims() rather than getUser(): this runs on every non-static request,
+  // and getUser() is a round trip to the Auth server each time. getClaims()
+  // verifies the JWT signature locally via WebCrypto against a cached JWKS, so
+  // the common case costs no network at all — and it still refreshes an
+  // about-to-expire session first, which is what renews the cookies above.
+  //
+  // Local verification requires the project to use asymmetric JWT signing keys.
+  // On the legacy HS256 shared secret this silently falls back to a server
+  // round trip (correct, just not faster) — see Supabase Dashboard →
+  // Settings → JWT Keys.
+  const { data } = await supabase.auth.getClaims();
 
-  return { response: supabaseResponse, user };
+  return { response: supabaseResponse, userId: data?.claims.sub ?? null };
 };
 
 /**

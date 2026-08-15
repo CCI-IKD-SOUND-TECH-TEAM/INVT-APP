@@ -28,16 +28,27 @@ function isPublic(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
-  const { response, user } = await createClient(request);
+  const { response, userId } = await createClient(request);
   const { pathname } = request.nextUrl;
 
+  // Signed out, asking for data -> 401 JSON, not a redirect. The read
+  // endpoints are called by React Query, and a 307 to /login would hand the
+  // fetcher an HTML page to parse as JSON. The client turns this into a
+  // navigation to /login itself (lib/queries/fetch.ts).
+  if (!userId && pathname.startsWith("/api") && !isPublic(pathname)) {
+    return Response.json(
+      { error: "Not authenticated" },
+      { status: 401, headers: response.headers }
+    );
+  }
+
   // Signed out, asking for a protected route -> sign in first.
-  if (!user && !isPublic(pathname)) {
+  if (!userId && !isPublic(pathname)) {
     return redirectPreservingSession(request, "/login", response);
   }
 
   // Signed in, sitting on /login -> nothing to do here.
-  if (user && pathname === "/login") {
+  if (userId && pathname === "/login") {
     return redirectPreservingSession(request, "/dashboard", response);
   }
 

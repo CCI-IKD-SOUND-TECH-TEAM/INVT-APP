@@ -1,55 +1,65 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import { StoreProvider } from "@/lib/store";
-import { getStoreData } from "@/lib/data/inventory";
+import { SessionProvider } from "@/lib/session";
 import { createClient } from "@/utils/supabase/server";
 import type { SessionUser } from "@/lib/types";
 
+/**
+ * The shell, and the identity it needs — nothing more.
+ *
+ * This layout used to await getStoreData(), which fetched every row of every
+ * domain table before any route could paint. That fetch now lives in
+ * components/StoreShell.tsx and is mounted only by the routes still reading the
+ * client store; migrated routes prefetch their own queries instead.
+ */
 export default async function AppGroupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const supabase = createClient(await cookies());
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  // proxy.ts already gates this route group; reaching here without a user means
-  // the session died between that check and render. Bounce rather than render
-  // the shell with no identity to stamp on audit entries.
-  if (!user) redirect("/login");
+  // getClaims() over getUser(): the JWT is verified locally against a cached
+  // JWKS instead of round-tripping to the Auth server, and it carries the id
+  // and email this layout needs. Same trust level — the signature is checked.
+  const { data: auth } = await supabase.auth.getClaims();
+  const claims = auth?.claims;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .eq("id", user.id)
-    .maybeSingle();
+  // proxy.ts already gates this route group; reaching here without a session
+  // means it died between that check and render. Bounce rather than render the
+  // shell with no identity to stamp on audit entries.
+  if (!claims) redirect("/login");
+
+  // tour_completed_at stays a separate select from the name/email row: merging
+  // them would mean an environment where migration 0004 hasn't been applied
+  // errors the whole select and loses the name/email fallback too. Two parallel
+  // queries cost about what one does; a lost fallback costs a broken app group.
+  const [{ data: profile }, { data: tourRow }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", claims.sub)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("tour_completed_at")
+      .eq("id", claims.sub)
+      .maybeSingle(),
+  ]);
 
   // A signed-in user with no profile row shouldn't happen — the
   // on_auth_user_created trigger creates one — but fall back to the email
   // local-part rather than crashing the entire app group.
   const currentUser: SessionUser = {
-    id: user.id,
-    full_name: profile?.full_name ?? user.email?.split("@")[0] ?? "Unknown",
-    email: profile?.email ?? user.email ?? "",
+    id: claims.sub,
+    full_name: profile?.full_name ?? claims.email?.split("@")[0] ?? "Unknown",
+    email: profile?.email ?? claims.email ?? "",
   };
 
-  // Queried separately from the profile row above so an environment where
-  // migration 0004 hasn't been applied yet degrades to "offer the tour"
-  // instead of breaking the name/email fallback.
-  const { data: tourRow } = await supabase
-    .from("profiles")
-    .select("tour_completed_at")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const seed = await getStoreData();
-
   return (
-    <StoreProvider currentUser={currentUser} seed={seed}>
+    <SessionProvider currentUser={currentUser}>
       <AppShell tourAutoStart={!tourRow?.tour_completed_at}>{children}</AppShell>
-    </StoreProvider>
+    </SessionProvider>
   );
 }
