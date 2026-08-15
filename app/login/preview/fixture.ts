@@ -71,6 +71,9 @@ function item(
     images: [],
     unit_of_measure: "Piece",
     asset_type: "Equipment",
+    // The preview never opens an item's detail screen, which is the only place
+    // per-unit rows render.
+    units: [],
   };
 }
 

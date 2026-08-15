@@ -1,4 +1,10 @@
-import type { CheckEntry, CheckSession, Defect, InventoryItem } from "@/lib/types";
+import type {
+  CheckEntry,
+  CheckSession,
+  Defect,
+  InventoryItem,
+  ItemUnit,
+} from "@/lib/types";
 
 /**
  * Pure row → interface mappers shared by the read layer (lib/data/inventory.ts)
@@ -6,9 +12,23 @@ import type { CheckEntry, CheckSession, Defect, InventoryItem } from "@/lib/type
  * dependency-free so both server contexts can import them.
  */
 
+export function mapItemUnit(row: Record<string, unknown>): ItemUnit {
+  return {
+    id: row.id as string,
+    item_id: row.item_id as string,
+    label: row.label as string,
+    serial_number: (row.serial_number as string | null) ?? null,
+    status: row.status as ItemUnit["status"],
+    notes: (row.notes as string | null) ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
 export function mapItem(row: Record<string, unknown>): InventoryItem {
   const images =
     (row.item_images as { url: string; display_order: number }[] | null) ?? [];
+  const units = (row.item_units as Record<string, unknown>[] | null) ?? [];
   return {
     id: row.id as string,
     item_name: row.item_name as string,
@@ -34,6 +54,11 @@ export function mapItem(row: Record<string, unknown>): InventoryItem {
       .map((img) => img.url),
     unit_of_measure: row.unit_of_measure as string,
     asset_type: row.asset_type as InventoryItem["asset_type"],
+    // Ordered by label so the form and the defect picker list "Unit 1, Unit 2"
+    // the same way every time — PostgREST embeds carry no ordering guarantee.
+    units: units
+      .map(mapItemUnit)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
   };
 }
 

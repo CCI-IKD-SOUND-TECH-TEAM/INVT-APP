@@ -74,6 +74,17 @@ export interface ItemListRow {
   department_name: string;
   first_image_url: string | null;
   /**
+   * Non-retired unit rows — the same number as `quantity` for a unit-tracked
+   * item. 0 means the item isn't unit-tracked, so `status` above describes the
+   * whole group.
+   */
+  unit_count: number;
+  /**
+   * Units currently Defective or Under Repair — a subset of `unit_count`, so
+   * the card reads `defective_unit_count of unit_count`.
+   */
+  defective_unit_count: number;
+  /**
    * Last time the item was physically seen in a check. Attached per page by
    * getItemsPage rather than joined into the view — the underlying view is a
    * full aggregate over check_entries, so it is queried for the visible ids

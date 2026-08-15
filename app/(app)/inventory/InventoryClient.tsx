@@ -111,6 +111,13 @@ function InventoryCard({
           </span>
         </div>
 
+        {item.defective_unit_count > 0 && (
+          <span className="inline-flex w-fit items-center gap-1 text-xs font-bold text-status-critical">
+            <ExclamationTriangleIcon className="size-[11px]" />
+            {item.defective_unit_count} of {item.unit_count} defective
+          </span>
+        )}
+
         {lowStock && (
           <span className="inline-flex w-fit items-center gap-1 text-xs font-bold text-status-caution">
             <ExclamationTriangleIcon className="size-[11px]" /> Low stock
@@ -673,6 +680,15 @@ function InventoryContent() {
                     <TableCell className="text-muted-foreground">{catLabel}</TableCell>
                     <TableCell>
                       <StatusBadge status={item.status} />
+                      {/* The badge is the item's rollup; this says how many of
+                          its units are out of service — "1 of 4" still leaves
+                          three working. */}
+                      {item.defective_unit_count > 0 && (
+                        <span className="mt-1 flex items-center gap-1 text-xs font-bold text-status-critical">
+                          <ExclamationTriangleIcon className="size-[11px]" />
+                          {item.defective_unit_count} of {item.unit_count} defective
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {item.quantity} {formatUnit(item.unit_of_measure, item.quantity)}

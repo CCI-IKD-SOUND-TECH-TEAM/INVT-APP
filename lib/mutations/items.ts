@@ -8,7 +8,7 @@ import {
   updateItem as updateItemAction,
 } from "@/app/actions/items";
 import { queryKeys } from "@/lib/queries/keys";
-import type { InventoryItem, NewItemInput } from "@/lib/types";
+import type { ItemPatch, NewItemInput } from "@/lib/types";
 
 /**
  * Item mutations.
@@ -76,7 +76,7 @@ export function useUpdateItem() {
       patch,
     }: {
       id: string;
-      patch: Partial<InventoryItem>;
+      patch: ItemPatch;
     }) => {
       const res = await updateItemAction(id, patch);
       if ("error" in res) throw new Error(res.error);

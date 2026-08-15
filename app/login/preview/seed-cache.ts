@@ -158,6 +158,10 @@ function buildRows(): ItemListRow[] {
       category_name: categoryName.get(i.category_id) ?? "—",
       department_name: departmentName.get(i.department_id) ?? "—",
       first_image_url: i.images[0] ?? null,
+      // No fixture item is unit-tracked — 0 is what the real view returns for
+      // an item with no unit rows.
+      unit_count: 0,
+      defective_unit_count: 0,
       last_confirmed_at: SEED.lastConfirmed[i.id] ?? null,
     }));
 }
