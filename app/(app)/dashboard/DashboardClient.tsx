@@ -1,10 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { IconArchive as ArchiveBoxIcon, IconPlus as PlusIcon } from "@tabler/icons-react";
-import { activityQuery, dashboardQuery } from "@/lib/queries";
+import {
+  activityQuery,
+  checksQuery,
+  dashboardQuery,
+  departmentItemCountsQuery,
+} from "@/lib/queries";
+import { useReference } from "@/lib/queries/use-reference";
+import { weekStartIso } from "@/lib/checks";
+import type { CheckType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import AttentionStrip from "@/components/dashboard/AttentionStrip";
 import SectionCards from "@/components/dashboard/SectionCards";
 import CategoryBreakdown from "@/components/dashboard/CategoryBreakdown";
 import DefectSummary from "@/components/dashboard/DefectSummary";
@@ -19,9 +29,44 @@ import WeeklyCheckCard from "@/components/dashboard/WeeklyCheckCard";
  * The data is prefetched by the server component above and hydrated into the
  * same cache keys, so these hooks resolve on first render — no client waterfall.
  */
+const CHECK_TYPES: CheckType[] = ["setup", "set_down"];
+
 export default function DashboardClient() {
   const { data: stats } = useQuery(dashboardQuery());
   const { data: activity = [] } = useQuery(activityQuery(10));
+
+  // The attention strip's checks segment: department × type slots with items
+  // to check but no session this week. Shares cache entries with the checks
+  // page and WeeklyCheckCard, so this costs no extra requests.
+  const { departments, departmentIdByName } = useReference();
+  const { data: checkSessions = [] } = useQuery(checksQuery(1));
+  const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
+  const currentWeek = weekStartIso();
+
+  const checksNotStarted = useMemo(() => {
+    let count = 0;
+    for (const name of departments) {
+      const id = departmentIdByName(name);
+      if (!id || (checkableCount[id] ?? 0) === 0) continue;
+      for (const type of CHECK_TYPES) {
+        const started = checkSessions.some(
+          (s) =>
+            s.department_id === id &&
+            s.session_type === type &&
+            s.week_start === currentWeek &&
+            s.status !== "abandoned"
+        );
+        if (!started) count++;
+      }
+    }
+    return count;
+  }, [
+    departments,
+    departmentIdByName,
+    checkableCount,
+    checkSessions,
+    currentWeek,
+  ]);
 
   // Suspended by the boundary in page.tsx on first load; on a cache miss after
   // an invalidation this keeps the previous frame rather than unmounting.
@@ -62,6 +107,15 @@ export default function DashboardClient() {
           </Link>
         </Button>
       </div>
+
+      <AttentionStrip
+        data={{
+          checksNotStarted,
+          openDefects: stats.defectCounts["Open"] ?? 0,
+          defectiveAssets: stats.defectiveAssets,
+          lowStockCount: stats.lowStockCount,
+        }}
+      />
 
       <SectionCards
         data={{

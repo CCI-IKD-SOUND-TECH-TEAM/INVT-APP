@@ -5,6 +5,8 @@ import { IconAlertTriangle as ExclamationTriangleIcon } from "@tabler/icons-reac
 import { cn } from "@/lib/utils";
 
 export interface AttentionData {
+  /** Department × type check slots with no session this week. */
+  checksNotStarted: number;
   openDefects: number;
   defectiveAssets: number;
   lowStockCount: number;
@@ -43,6 +45,20 @@ function Segment({
 
 export default function AttentionStrip({ data }: { data: AttentionData }) {
   const segments = [
+    // The dated task leads — a check due this week outranks standing state.
+    data.checksNotStarted > 0 && (
+      <Segment
+        key="checks"
+        href="/checks"
+        count={data.checksNotStarted}
+        label={
+          data.checksNotStarted === 1
+            ? "check not started this week"
+            : "checks not started this week"
+        }
+        tone="caution"
+      />
+    ),
     data.openDefects > 0 && (
       <Segment
         key="open"

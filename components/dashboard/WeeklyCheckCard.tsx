@@ -1,15 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   IconAlertCircleFilled as ExclamationCircleIcon,
   IconCircleCheckFilled as CheckCircleIcon,
   IconCircleDashed as CircleDashedIcon,
+  IconLoader2 as LoaderIcon,
+  IconPlayerPlay as PlayIcon,
   IconProgress as ProgressIcon,
 } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
-import { checksQuery } from "@/lib/queries";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { checksQuery, departmentItemCountsQuery } from "@/lib/queries";
+import { queryKeys } from "@/lib/queries/keys";
 import { useReference } from "@/lib/queries/use-reference";
+import { useStartCheckSession } from "@/lib/mutations/checks";
 import { CHECK_TYPE_LABEL, weekStartIso } from "@/lib/checks";
 import type { CheckSession, CheckType } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,14 +29,49 @@ const ROW_GRID = "grid grid-cols-[1fr_4.75rem_4.75rem] items-center gap-x-2";
 
 /**
  * This week's check status per department × type. Each cell links to the
- * session when one exists, otherwise to the checks landing page.
+ * session when one exists; a not-started cell starts one in a single tap and
+ * navigates straight into it — the cue and the action are the same control.
  */
 export default function WeeklyCheckCard() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { departments, departmentIdByName } = useReference();
   // Only this week's sessions are rendered, so ask for one week — the checks
   // page asks for twelve and keeps its own cache entry.
   const { data: checkSessions = [] } = useQuery(checksQuery(1));
+  // A department with nothing to check can't start a session — its cell links
+  // to the checks page, whose empty state explains why.
+  const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
+  const startCheckSession = useStartCheckSession();
   const currentWeek = weekStartIso();
+
+  const [pendingCell, setPendingCell] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function startFromCell(
+    deptId: string,
+    deptName: string,
+    type: CheckType
+  ) {
+    const key = `${deptName}:${type}`;
+    setPendingCell(key);
+    setError(null);
+    try {
+      // Race-safe: the action returns the existing session when someone else
+      // started this check first, so both taps land in the same walkthrough.
+      const session = await startCheckSession.mutateAsync({
+        department_id: deptId,
+        session_type: type,
+      });
+      router.push(`/checks/${session.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start that check.");
+      // The usual cause is state this card hasn't seen yet (e.g. completed on
+      // another device) — refetch so the grid corrects itself.
+      queryClient.invalidateQueries({ queryKey: queryKeys.checks.all() });
+    }
+    setPendingCell(null);
+  }
 
   const cell = (deptId: string | undefined, type: CheckType) =>
     deptId
@@ -71,6 +112,7 @@ export default function WeeklyCheckCard() {
       <div className="flex flex-col gap-2">
         {departments.map((deptName) => {
           const deptId = departmentIdByName(deptName);
+          const canStart = deptId ? (checkableCount[deptId] ?? 0) > 0 : false;
           return (
             <div
               key={deptName}
@@ -86,12 +128,25 @@ export default function WeeklyCheckCard() {
                   type={type}
                   deptName={deptName}
                   session={cell(deptId, type)}
+                  canStart={canStart}
+                  pending={pendingCell === `${deptName}:${type}`}
+                  onStart={
+                    deptId
+                      ? () => startFromCell(deptId, deptName, type)
+                      : undefined
+                  }
                 />
               ))}
             </div>
           );
         })}
       </div>
+
+      {error && (
+        <p className="rounded-md border border-brand-deep bg-brand-tint px-2.5 py-1.5 text-xs text-brand">
+          {error}
+        </p>
+      )}
     </Card>
   );
 }
@@ -153,15 +208,50 @@ function cellState(session: CheckSession | undefined): CellState {
   };
 }
 
+const CELL_CLASS =
+  /* No resting border — hover carries the affordance, and the hue lives
+     on the icon so the label stays neutral (DESIGN.md §180). */
+  "flex items-center justify-center gap-1.5 rounded-sm py-1 transition-colors duration-150 hover:bg-secondary";
+
 function CheckCell({
   type,
   deptName,
   session,
+  canStart,
+  pending,
+  onStart,
 }: {
   type: CheckType;
   deptName: string;
   session: CheckSession | undefined;
+  canStart: boolean;
+  pending: boolean;
+  onStart?: () => void;
 }) {
+  // Not started, and startable: the cell IS the start button — one tap
+  // creates the session and lands in the walkthrough, no detour via /checks.
+  if (!session && canStart && onStart) {
+    const label = `${deptName} ${CHECK_TYPE_LABEL[type]}: not started — start now`;
+    return (
+      <button
+        type="button"
+        onClick={onStart}
+        disabled={pending}
+        title={label}
+        aria-label={label}
+        aria-busy={pending || undefined}
+        className={cn(CELL_CLASS, "disabled:opacity-60")}
+      >
+        {pending ? (
+          <LoaderIcon className="size-3.5 shrink-0 animate-spin text-brand" />
+        ) : (
+          <PlayIcon className="size-3.5 shrink-0 text-brand" />
+        )}
+        <span className="text-xs font-bold leading-tight">Start</span>
+      </button>
+    );
+  }
+
   const { icon: Icon, tone, short, full } = cellState(session);
   const label = `${deptName} ${CHECK_TYPE_LABEL[type]}: ${full}`;
 
@@ -170,9 +260,7 @@ function CheckCell({
       href={session ? `/checks/${session.id}` : "/checks"}
       title={label}
       aria-label={label}
-      /* No resting border — hover carries the affordance, and the hue lives
-         on the icon so the label stays neutral (DESIGN.md §180). */
-      className="flex items-center justify-center gap-1.5 rounded-sm py-1 transition-colors duration-150 hover:bg-secondary"
+      className={CELL_CLASS}
     >
       <Icon className={cn("size-3.5 shrink-0", tone)} />
       <span className="text-xs font-bold leading-tight tabular-nums">
