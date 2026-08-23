@@ -1,5 +1,5 @@
-import { format, startOfWeek } from "date-fns";
-import type { CheckEntry, CheckType } from "@/lib/types";
+import { format, startOfWeek, subWeeks } from "date-fns";
+import type { CheckEntry, CheckSession, CheckType } from "@/lib/types";
 
 /**
  * Shared helpers for the weekly presence-check domain. Client-safe (no
@@ -30,3 +30,37 @@ export const CHECK_TYPE_LABEL: Record<CheckType, string> = {
   setup: "Setup",
   set_down: "Set-down",
 };
+
+/**
+ * Consecutive fully-checked weeks for a department — both the setup and the
+ * set-down completed. The current week counts once it's fully done; an
+ * unfinished current week doesn't break the run (counting starts from last
+ * week instead). Capped by however many weeks of sessions the caller loaded,
+ * so a 12-week query yields at most a 12-week streak.
+ */
+export function departmentCheckStreak(
+  sessions: CheckSession[],
+  departmentId: string,
+  now: Date = new Date()
+): number {
+  const typesByWeek = new Map<string, Set<CheckType>>();
+  for (const s of sessions) {
+    if (s.department_id !== departmentId || s.status !== "completed") continue;
+    const types = typesByWeek.get(s.week_start) ?? new Set<CheckType>();
+    types.add(s.session_type);
+    typesByWeek.set(s.week_start, types);
+  }
+  const fullyChecked = (week: string) => {
+    const types = typesByWeek.get(week);
+    return types?.has("setup") === true && types.has("set_down");
+  };
+
+  let cursor = now;
+  if (!fullyChecked(weekStartIso(cursor))) cursor = subWeeks(cursor, 1);
+  let streak = 0;
+  while (fullyChecked(weekStartIso(cursor))) {
+    streak++;
+    cursor = subWeeks(cursor, 1);
+  }
+  return streak;
+}

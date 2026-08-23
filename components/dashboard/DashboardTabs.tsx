@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { format } from "date-fns";
 import {
   IconArchive as ArchiveBoxIcon,
   IconAlertTriangle as ExclamationTriangleIcon,
@@ -38,9 +39,10 @@ function timeAgo(iso: string) {
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  return `${months}mo ago`;
+  if (days < 8) return `${days}d ago`;
+  // Beyond a week, a real date is more useful than "3mo ago" in a record
+  // meant for accountability.
+  return format(new Date(iso), "d MMM yyyy");
 }
 
 function ActivityIcon({ type }: { type: AuditEntry["actionType"] }) {

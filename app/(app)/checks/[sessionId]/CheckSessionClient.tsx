@@ -18,7 +18,12 @@ import {
   useRecordCheckEntry,
 } from "@/lib/mutations/checks";
 import type { ItemListRow } from "@/lib/api-types";
-import { CHECK_TYPE_LABEL, isShortfall, weekStartIso } from "@/lib/checks";
+import {
+  CHECK_TYPE_LABEL,
+  departmentCheckStreak,
+  isShortfall,
+  weekStartIso,
+} from "@/lib/checks";
 import type { CheckEntry, CheckResult, CheckSession, } from "@/lib/types";
 import CheckItemRow from "@/components/checks/CheckItemRow";
 import CheckResultBadge from "@/components/checks/CheckResultBadge";
@@ -28,6 +33,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   IconAlertTriangle as ExclamationTriangleIcon,
   IconArrowLeft as ArrowLeftIcon,
+  IconCircleCheck as CheckCircleIcon,
   IconClipboardCheck as ClipboardDocumentCheckIcon,
 } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
@@ -35,6 +41,9 @@ import { cn } from "@/lib/utils";
 export default function CheckSessionClient() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { data: session, isPending } = useQuery(checkSessionQuery(sessionId));
+  // True only when THIS visit finished the check — the summary then opens with
+  // a completion moment instead of reading like an old record.
+  const [justCompleted, setJustCompleted] = useState(false);
 
   // Distinguish "still loading" from "no such session" — the store had every
   // session in memory, so absence used to be conclusive. It isn't now.
@@ -58,9 +67,12 @@ export default function CheckSessionClient() {
   }
 
   return session.status === "in_progress" ? (
-    <WalkthroughView session={session} />
+    <WalkthroughView
+      session={session}
+      onCompleted={() => setJustCompleted(true)}
+    />
   ) : (
-    <SummaryView session={session} />
+    <SummaryView session={session} celebrate={justCompleted} />
   );
 }
 
@@ -68,7 +80,13 @@ export default function CheckSessionClient() {
 /* In-progress walkthrough                                                    */
 /* ------------------------------------------------------------------------- */
 
-function WalkthroughView({ session }: { session: CheckSession }) {
+function WalkthroughView({
+  session,
+  onCompleted,
+}: {
+  session: CheckSession;
+  onCompleted: () => void;
+}) {
   const router = useRouter();
   const { departmentName } = useReference();
 
@@ -183,6 +201,7 @@ function WalkthroughView({ session }: { session: CheckSession }) {
     setError(null);
     try {
       await completeCheckSession.mutateAsync(session.id);
+      onCompleted();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not complete the check.");
     }
@@ -447,11 +466,20 @@ function SummaryList({
 /* Completed / abandoned summary                                              */
 /* ------------------------------------------------------------------------- */
 
-function SummaryView({ session }: { session: CheckSession }) {
+function SummaryView({
+  session,
+  celebrate = false,
+}: {
+  session: CheckSession;
+  celebrate?: boolean;
+}) {
   const { departmentName, profileName } = useReference();
   const { data: items = [] } = useQuery(
     itemsByDepartmentQuery(session.department_id)
   );
+  // For the streak line in the completion moment; shares the checks page's
+  // cache entry and is only read when `celebrate` is set.
+  const { data: checkSessions = [] } = useQuery(checksQuery(12));
 
   const label = CHECK_TYPE_LABEL[session.session_type];
   const deptName = departmentName(session.department_id);
@@ -463,8 +491,50 @@ function SummaryView({ session }: { session: CheckSession }) {
     session.entries.filter((e) => e.result === result);
   const shortfalls = session.entries.filter(isShortfall);
 
+  // The reward leg of the habit loop: a brief acknowledgment the moment the
+  // check completes — celebrating the walkthrough itself, whatever it found.
+  const flagged =
+    (session.missing_count ?? 0) +
+    (session.issue_count ?? 0) +
+    (session.shortfall_count ?? 0);
+  const clean = flagged === 0 && (session.unchecked_count ?? 0) === 0;
+  const streak = departmentCheckStreak(checkSessions, session.department_id);
+
   return (
     <div className="flex flex-col gap-5">
+      {celebrate && (
+        <div
+          className={cn(
+            "flex items-start gap-2.5 rounded-lg border px-4 py-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-300",
+            clean
+              ? "border-status-good/40 bg-status-good/10"
+              : "border-status-caution/40 bg-status-caution/10"
+          )}
+        >
+          <CheckCircleIcon
+            className={cn(
+              "mt-0.5 size-5 shrink-0",
+              clean ? "text-status-good" : "text-status-caution"
+            )}
+          />
+          <div className="flex flex-col gap-0.5 text-sm">
+            <span className="font-bold">
+              {clean
+                ? `Nice work — everything accounted for.`
+                : `Check done — thanks for the walkthrough.`}
+            </span>
+            <span className="text-muted-foreground">
+              {clean
+                ? `All ${session.present_count ?? 0} ${
+                    (session.present_count ?? 0) === 1 ? "item" : "items"
+                  } present.`
+                : `${flagged} ${flagged === 1 ? "item" : "items"} flagged for follow-up.`}
+              {streak >= 2 &&
+                ` That's ${streak} weeks in a row for ${deptName}.`}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button asChild size="icon-sm" variant="ghost" aria-label="Back">

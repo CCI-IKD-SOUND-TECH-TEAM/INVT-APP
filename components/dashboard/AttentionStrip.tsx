@@ -44,6 +44,11 @@ function Segment({
 }
 
 export default function AttentionStrip({ data }: { data: AttentionData }) {
+  // The check week starts on Sunday, the service day (lib/checks.ts). On
+  // Sunday a pending check is simply due today; from Monday the service has
+  // already happened, so the same state escalates to overdue.
+  const serviceDay = new Date().getDay() === 0;
+
   const segments = [
     // The dated task leads — a check due this week outranks standing state.
     data.checksNotStarted > 0 && (
@@ -52,11 +57,15 @@ export default function AttentionStrip({ data }: { data: AttentionData }) {
         href="/checks"
         count={data.checksNotStarted}
         label={
-          data.checksNotStarted === 1
-            ? "check not started this week"
-            : "checks not started this week"
+          serviceDay
+            ? data.checksNotStarted === 1
+              ? "check to do today"
+              : "checks to do today"
+            : data.checksNotStarted === 1
+              ? "check not started this week"
+              : "checks not started this week"
         }
-        tone="caution"
+        tone={serviceDay ? "caution" : "critical"}
       />
     ),
     data.openDefects > 0 && (

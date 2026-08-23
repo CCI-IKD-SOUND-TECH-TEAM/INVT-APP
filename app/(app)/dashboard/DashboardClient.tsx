@@ -39,7 +39,9 @@ export default function DashboardClient() {
   // to check but no session this week. Shares cache entries with the checks
   // page and WeeklyCheckCard, so this costs no extra requests.
   const { departments, departmentIdByName } = useReference();
-  const { data: checkSessions = [] } = useQuery(checksQuery(1));
+  // Twelve weeks to share WeeklyCheckCard's cache entry (it reads history for
+  // streaks); only this week matters for the strip.
+  const { data: checkSessions = [] } = useQuery(checksQuery(12));
   const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
   const currentWeek = weekStartIso();
 

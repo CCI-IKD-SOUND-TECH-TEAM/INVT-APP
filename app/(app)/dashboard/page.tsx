@@ -1,9 +1,15 @@
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { getQueryClient } from "@/lib/query-client";
-import { activityQuery, checksQuery, dashboardQuery } from "@/lib/queries";
+import {
+  activityQuery,
+  checksQuery,
+  dashboardQuery,
+  departmentItemCountsQuery,
+} from "@/lib/queries";
 import { getDashboardStats } from "@/lib/data/dashboard";
 import { getActivity } from "@/lib/data/activity";
 import { getChecks } from "@/lib/data/checks";
+import { getDepartmentItemCounts } from "@/lib/data/items";
 import { getReference } from "@/lib/data/reference";
 import { referenceQuery } from "@/lib/queries";
 import DashboardClient from "./DashboardClient";
@@ -29,11 +35,16 @@ export default async function DashboardPage() {
       ...activityQuery(10),
       queryFn: () => getActivity(10),
     }),
-    // WeeklyCheckCard and the reference labels render in the same frame —
-    // prefetching them here keeps the card from popping in after hydration.
+    // WeeklyCheckCard, the attention strip, and the reference labels render in
+    // the same frame — prefetching here keeps them from popping in after
+    // hydration. Twelve weeks because the card's streaks read the history.
     queryClient.prefetchQuery({
-      ...checksQuery(1),
-      queryFn: () => getChecks(1),
+      ...checksQuery(12),
+      queryFn: () => getChecks(12),
+    }),
+    queryClient.prefetchQuery({
+      ...departmentItemCountsQuery(),
+      queryFn: getDepartmentItemCounts,
     }),
     queryClient.prefetchQuery({
       ...referenceQuery(),

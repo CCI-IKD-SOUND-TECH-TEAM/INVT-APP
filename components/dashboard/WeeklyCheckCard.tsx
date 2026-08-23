@@ -16,7 +16,11 @@ import { checksQuery, departmentItemCountsQuery } from "@/lib/queries";
 import { queryKeys } from "@/lib/queries/keys";
 import { useReference } from "@/lib/queries/use-reference";
 import { useStartCheckSession } from "@/lib/mutations/checks";
-import { CHECK_TYPE_LABEL, weekStartIso } from "@/lib/checks";
+import {
+  CHECK_TYPE_LABEL,
+  departmentCheckStreak,
+  weekStartIso,
+} from "@/lib/checks";
 import type { CheckSession, CheckType } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -36,9 +40,10 @@ export default function WeeklyCheckCard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { departments, departmentIdByName } = useReference();
-  // Only this week's sessions are rendered, so ask for one week — the checks
-  // page asks for twelve and keeps its own cache entry.
-  const { data: checkSessions = [] } = useQuery(checksQuery(1));
+  // Twelve weeks, not one: the grid renders only this week, but the streaks
+  // and the checks-caught footer read the history. Shares the checks page's
+  // cache entry, and the dashboard server component prefetches it.
+  const { data: checkSessions = [] } = useQuery(checksQuery(12));
   // A department with nothing to check can't start a session — its cell links
   // to the checks page, whose empty state explains why.
   const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
@@ -84,12 +89,38 @@ export default function WeeklyCheckCard() {
         )
       : undefined;
 
+  // "2 of 6 done this week" — department × type slots for departments that
+  // actually have items, against this week's completed sessions.
+  const slots = departments.reduce((n, name) => {
+    const id = departmentIdByName(name);
+    return id && (checkableCount[id] ?? 0) > 0 ? n + CHECK_TYPES.length : n;
+  }, 0);
+  const doneThisWeek = checkSessions.filter(
+    (s) => s.week_start === currentWeek && s.status === "completed"
+  ).length;
+
+  // Proof the ritual pays: items the last 12 weeks of checks flagged.
+  const caught = checkSessions
+    .filter((s) => s.status === "completed")
+    .reduce(
+      (n, s) =>
+        n +
+        (s.missing_count ?? 0) +
+        (s.issue_count ?? 0) +
+        (s.shortfall_count ?? 0),
+      0
+    );
+
   return (
     <Card>
       <CardHeader className="mb-1 items-start">
         <div className="flex flex-col gap-0.5">
           <CardTitle>Weekly Checks</CardTitle>
-          <span className="text-xs text-ink-faint">This week</span>
+          <span className="text-xs text-ink-faint">
+            {slots > 0
+              ? `${doneThisWeek} of ${slots} done this week`
+              : "This week"}
+          </span>
         </div>
         <Link
           href="/checks"
@@ -113,6 +144,11 @@ export default function WeeklyCheckCard() {
         {departments.map((deptName) => {
           const deptId = departmentIdByName(deptName);
           const canStart = deptId ? (checkableCount[deptId] ?? 0) > 0 : false;
+          // The streak is the reward leg of the habit loop: consecutive fully
+          // checked weeks, shown once there are two to point at.
+          const streak = deptId
+            ? departmentCheckStreak(checkSessions, deptId)
+            : 0;
           return (
             <div
               key={deptName}
@@ -121,7 +157,17 @@ export default function WeeklyCheckCard() {
                 "rounded-md border border-line-subtle bg-popover px-3 py-2"
               )}
             >
-              <span className="text-sm font-bold">{deptName}</span>
+              <span className="min-w-0 truncate text-sm font-bold">
+                {deptName}
+                {streak >= 2 && (
+                  <span
+                    className="ml-1.5 text-[0.6875rem] font-bold text-status-good"
+                    title={`${streak} weeks in a row fully checked`}
+                  >
+                    {streak}w ✓
+                  </span>
+                )}
+              </span>
               {CHECK_TYPES.map((type) => (
                 <CheckCell
                   key={type}
@@ -145,6 +191,13 @@ export default function WeeklyCheckCard() {
       {error && (
         <p className="rounded-md border border-brand-deep bg-brand-tint px-2.5 py-1.5 text-xs text-brand">
           {error}
+        </p>
+      )}
+
+      {caught > 0 && (
+        <p className="text-xs text-ink-faint">
+          Checks caught {caught} {caught === 1 ? "item" : "items"} needing
+          follow-up in the last 12 weeks.
         </p>
       )}
     </Card>
