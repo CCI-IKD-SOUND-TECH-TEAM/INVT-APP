@@ -4,10 +4,10 @@ import { useMemo, useState, type ComponentProps, type ComponentType, type SVGPro
 import { useQuery } from "@tanstack/react-query";
 import { reportsQuery } from "@/lib/queries";
 import { useReference } from "@/lib/queries/use-reference";
-import { todayIso } from "@/lib/checks";
 import { isLowStock } from "@/lib/inventory";
+import { downloadCsv, printReport, type ReportResult } from "@/lib/reports/export";
 import type { DefectWithItem, ItemListRow } from "@/lib/api-types";
-import type { AuditEntry, Defect, DefectSeverity } from "@/lib/types";
+import type { Defect, DefectSeverity } from "@/lib/types";
 import StatusBadge from "@/components/StatusBadge";
 import SeverityLabel from "@/components/SeverityLabel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,14 +17,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { IconArchive as ArchiveBoxIcon, IconDownload as ArrowDownTrayIcon, IconTrendingDown as ArrowTrendingDownIcon, IconClock as ClockIcon, IconCube as CubeIcon, IconAlertTriangle as ExclamationTriangleIcon, IconPrinter as PrinterIcon, IconLayoutGrid as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
+import { IconArchive as ArchiveBoxIcon, IconDownload as ArrowDownTrayIcon, IconTrendingDown as ArrowTrendingDownIcon, IconCube as CubeIcon, IconAlertTriangle as ExclamationTriangleIcon, IconPrinter as PrinterIcon, IconLayoutGrid as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
 
 type HeroIcon = ComponentType<SVGProps<SVGSVGElement>>;
 type StatusValue = ComponentProps<typeof StatusBadge>["status"];
-
-type Column = { key: string; label: string; kind?: "status" | "num" | "severity" };
-type Row = Record<string, string>;
-type ReportResult = { columns: Column[]; rows: Row[] };
 
 type DateField = { field: "dateAcquired" | "dateReported" | "timestamp"; label: string };
 
@@ -43,7 +39,6 @@ interface ReportData {
   items: ItemListRow[];
   /** Carries item_name, so no id -> item lookup is needed. */
   defects: DefectWithItem[];
-  activity: AuditEntry[];
   categories: string[];
   users: string[];
   categoryName: (id: string) => string;
@@ -95,16 +90,6 @@ function fmtDate(iso?: string) {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-}
-
-function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -313,107 +298,7 @@ const REPORTS: ReportDef[] = [
         .filter((r) => r.count !== "0"),
     }),
   },
-  {
-    id: "recent-activity",
-    name: "Recent Activities",
-    description: "The audit trail — who changed what, and when.",
-    icon: ClockIcon,
-    unit: "entries",
-    date: { field: "timestamp", label: "Date" },
-    filters: { user: true, actionType: true },
-    run: (data, f) => ({
-      columns: [
-        { key: "timestamp", label: "Timestamp" },
-        { key: "user", label: "User" },
-        { key: "action", label: "Action Type" },
-        { key: "record", label: "Record Affected" },
-        { key: "detail", label: "Detail" },
-      ],
-      rows: data.activity
-        .filter((a) => f.user === "all" || a.user === f.user)
-        .filter((a) => f.actionType === "all" || a.actionType === f.actionType)
-        .filter((a) => inRange(a.timestamp.slice(0, 10), f.from, f.to))
-        .map((a) => ({
-          timestamp: fmtDateTime(a.timestamp),
-          user: a.user,
-          action: a.actionType,
-          record: a.recordLabel,
-          detail: a.detail,
-        })),
-    }),
-  },
 ];
-
-function slug(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-
-function toCsv({ columns, rows }: ReportResult) {
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const head = columns.map((c) => esc(c.label)).join(",");
-  const body = rows
-    .map((r) => columns.map((c) => esc(r[c.key] ?? "")).join(","))
-    .join("\n");
-  return `${head}\n${body}`;
-}
-
-function downloadCsv(name: string, result: ReportResult) {
-  const blob = new Blob([toCsv(result)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${slug(name)}-${todayIso()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Print via a hidden iframe → the browser's "Save as PDF" destination.
-function printReport(name: string, { columns, rows }: ReportResult) {
-  const esc = (v: string) =>
-    v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const thead = columns.map((c) => `<th>${esc(c.label)}</th>`).join("");
-  const tbody = rows
-    .map(
-      (r) =>
-        `<tr>${columns
-          .map(
-            (c) =>
-              `<td class="${c.kind === "num" ? "num" : ""}">${esc(r[c.key] ?? "")}</td>`
-          )
-          .join("")}</tr>`
-    )
-    .join("");
-  const generated = new Date().toLocaleString("en-GB");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(name)}</title>
-    <style>
-      *{font-family:Arial,Helvetica,sans-serif;color:#111}
-      body{margin:28px}
-      h1{font-size:20px;margin:0 0 2px}
-      .meta{color:#666;font-size:12px;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;font-size:12px}
-      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
-      th{background:#f3f3f3}
-      td.num{text-align:right;font-variant-numeric:tabular-nums}
-      tr:nth-child(even) td{background:#fafafa}
-    </style></head><body>
-    <h1>${esc(name)} Report</h1>
-    <div class="meta">CCI Ikorodu Inventory · ${rows.length} row${rows.length === 1 ? "" : "s"} · Generated ${esc(generated)}</div>
-    <table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
-    </body></html>`;
-
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentWindow?.document;
-  if (!doc) return;
-  doc.open();
-  doc.write(html);
-  doc.close();
-  iframe.contentWindow?.focus();
-  iframe.contentWindow?.print();
-  window.setTimeout(() => document.body.removeChild(iframe), 1000);
-}
 
 export default function ReportsClient() {
   const { categories, users, categoryName } = useReference();
@@ -423,7 +308,6 @@ export default function ReportsClient() {
     () => ({
       items: dataset?.items ?? [],
       defects: dataset?.defects ?? [],
-      activity: dataset?.activity ?? [],
       categories,
       users,
       categoryName,

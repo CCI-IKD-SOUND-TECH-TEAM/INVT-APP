@@ -2,7 +2,6 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getActivity } from "@/lib/data/activity";
 import { getDefects } from "@/lib/data/defects";
 import type { ItemListRow, ReportsDataset } from "@/lib/api-types";
 
@@ -21,14 +20,13 @@ import type { ItemListRow, ReportsDataset } from "@/lib/api-types";
 export async function getReportsDataset(): Promise<ReportsDataset> {
   const supabase = createClient(await cookies());
 
-  const [itemsResult, defects, activity] = await Promise.all([
+  const [itemsResult, defects] = await Promise.all([
     // Retired items included — reports cover history, not just active stock.
     supabase
       .from("inventory_items_list")
       .select("*", { count: "exact" })
       .order("item_name"),
     getDefects(),
-    getActivity(200),
   ]);
 
   if (itemsResult.error) {
@@ -49,5 +47,5 @@ export async function getReportsDataset(): Promise<ReportsDataset> {
     );
   }
 
-  return { items, defects, activity, totalItems: total, truncated };
+  return { items, defects, totalItems: total, truncated };
 }

@@ -57,7 +57,7 @@ export default function RecentActivity({
       <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 pb-1 pt-5">
         <h2 className="h-title">Recent activity</h2>
         <Link
-          href="/reports"
+          href="/activity"
           className="text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-160 ease-out-quart hover:text-brand"
         >
           View all

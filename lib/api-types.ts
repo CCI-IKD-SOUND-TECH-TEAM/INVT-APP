@@ -1,6 +1,5 @@
 import type {
   AssetType,
-  AuditEntry,
   Category,
   DefectSeverity,
   DefectStatus,
@@ -169,7 +168,6 @@ export interface ItemStatusCounts {
 export interface ReportsDataset {
   items: ItemListRow[];
   defects: DefectWithItem[];
-  activity: AuditEntry[];
   totalItems: number;
   truncated: boolean;
 }

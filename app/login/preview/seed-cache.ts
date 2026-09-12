@@ -52,6 +52,7 @@ export function usePreviewCache() {
   });
 
   queryClient.setQueryData(activityQuery(8).queryKey, SEED.activity.slice(0, 8));
+  queryClient.setQueryData(activityQuery(200).queryKey, SEED.activity.slice(0, 200));
   queryClient.setQueryData(checksQuery(1).queryKey, SEED.checkSessions);
   queryClient.setQueryData(dashboardQuery().queryKey, buildStats());
 
@@ -114,7 +115,6 @@ export function usePreviewCache() {
   queryClient.setQueryData(reportsQuery().queryKey, {
     items: rows,
     defects,
-    activity: SEED.activity,
     totalItems: rows.length,
     truncated: false,
   });

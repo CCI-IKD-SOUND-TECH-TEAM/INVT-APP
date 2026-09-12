@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { IconArchive as ArchiveBoxIcon, IconLogout as ArrowRightStartOnRectangleIcon, IconClipboardCheck as ClipboardDocumentCheckIcon, IconSettings as Cog6ToothIcon, IconReportAnalytics as DocumentChartBarIcon, IconLayoutDashboard as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
+import { IconArchive as ArchiveBoxIcon, IconLogout as ArrowRightStartOnRectangleIcon, IconClipboardCheck as ClipboardDocumentCheckIcon, IconClock as ClockIcon, IconSettings as Cog6ToothIcon, IconReportAnalytics as DocumentChartBarIcon, IconLayoutDashboard as Squares2X2Icon, IconTool as WrenchScrewdriverIcon } from "@tabler/icons-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,7 @@ const NAV = [
   { href: "/defects", label: "Defect Log", icon: WrenchScrewdriverIcon, tour: "nav-defects" },
   { href: "/checks", label: "Weekly Checks", icon: ClipboardDocumentCheckIcon, tour: "nav-checks" },
   { href: "/reports", label: "Reports", icon: DocumentChartBarIcon, tour: "nav-reports" },
+  { href: "/activity", label: "Activity", icon: ClockIcon, tour: "nav-activity" },
   { href: "/settings", label: "Settings", icon: Cog6ToothIcon, tour: "nav-settings" },
 ];
 
