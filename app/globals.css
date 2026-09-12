@@ -146,6 +146,12 @@
   --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Exposes the custom curve above as a real Tailwind utility: `ease-out-quart`.
+     Tailwind's `duration-<n>` already accepts any integer natively, so the
+     160ms/220ms tokens above are used directly as `duration-160`/`duration-220`
+     — no theme mapping needed for those. */
+  --ease-out-quart: var(--ease-out-quart);
 }
 
 @layer base {

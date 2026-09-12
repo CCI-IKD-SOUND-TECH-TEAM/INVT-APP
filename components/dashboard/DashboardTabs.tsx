@@ -85,7 +85,7 @@ export default function DashboardTabs({
           </TabsList>
           <Link
             href="/reports"
-            className="text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
+            className="text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-160 ease-out-quart hover:text-brand"
           >
             View All
           </Link>
@@ -97,7 +97,7 @@ export default function DashboardTabs({
               <div
                 key={a.id}
                 className={cn(
-                  "flex items-start gap-3 rounded-md px-3 py-3 transition-colors duration-150 hover:bg-surface",
+                  "flex items-start gap-3 rounded-md px-3 py-3 transition-colors duration-160 ease-out-quart hover:bg-surface",
                   idx !== 0 && "border-t border-line-subtle"
                 )}
               >

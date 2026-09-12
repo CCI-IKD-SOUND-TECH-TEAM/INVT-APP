@@ -26,18 +26,22 @@ function Segment({
   return (
     <Link
       href={href}
-      className="group inline-flex items-baseline gap-1.5 rounded-md px-2 py-1 transition-colors duration-150 hover:bg-popover"
+      className="group inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors duration-160 ease-out-quart hover:bg-popover"
     >
+      {/* Tone lives on the dot, not the numeral — Glyph-Only Rule
+          (DESIGN.md §6): "Don't color a numeral." */}
       <span
+        aria-hidden
         className={cn(
-          "font-bold tabular-nums",
-          tone === "critical" ? "text-status-critical" : "text-status-caution"
+          "size-1.5 shrink-0 rounded-full",
+          tone === "critical" ? "bg-status-critical" : "bg-status-caution"
         )}
-      >
-        {count}
-      </span>
-      <span className="text-sm text-muted-foreground group-hover:text-foreground">
-        {label}
+      />
+      <span className="inline-flex items-baseline gap-1.5">
+        <span className="font-bold tabular-nums">{count}</span>
+        <span className="text-sm text-muted-foreground group-hover:text-foreground">
+          {label}
+        </span>
       </span>
     </Link>
   );

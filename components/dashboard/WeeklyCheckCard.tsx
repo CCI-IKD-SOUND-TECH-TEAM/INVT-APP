@@ -124,7 +124,7 @@ export default function WeeklyCheckCard() {
         </div>
         <Link
           href="/checks"
-          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
+          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-160 ease-out-quart hover:text-brand"
         >
           Open Checks
         </Link>
@@ -263,8 +263,10 @@ function cellState(session: CheckSession | undefined): CellState {
 
 const CELL_CLASS =
   /* No resting border — hover carries the affordance, and the hue lives
-     on the icon so the label stays neutral (DESIGN.md §180). */
-  "flex items-center justify-center gap-1.5 rounded-sm py-1 transition-colors duration-150 hover:bg-secondary";
+     on the icon so the label stays neutral (DESIGN.md §180). min-h-10:
+     this is the single-tap "start check" control — was ~24px tall, under
+     the "generous touch targets" DESIGN.md itself promises. */
+  "flex min-h-10 items-center justify-center gap-1.5 rounded-sm py-1 transition-colors duration-160 ease-out-quart hover:bg-secondary";
 
 function CheckCell({
   type,

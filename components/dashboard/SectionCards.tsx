@@ -36,7 +36,7 @@ function KpiCard({
   return (
     <Link
       href={href}
-      className="@container/card group flex flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-[border-color,transform] duration-150 ease-out hover:-translate-y-0.5 hover:border-brand/40 md:p-5"
+      className="@container/card group flex flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-[border-color,transform] duration-160 ease-out-quart hover:-translate-y-0.5 hover:border-brand/40 md:p-5"
     >
       <div className="flex items-center justify-between">
         <span className="h-label">{label}</span>

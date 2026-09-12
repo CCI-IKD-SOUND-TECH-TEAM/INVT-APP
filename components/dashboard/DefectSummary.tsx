@@ -44,7 +44,7 @@ export default function DefectSummary({ counts }: { counts: DefectCounts }) {
         </div>
         <Link
           href="/defects"
-          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-150 hover:text-brand"
+          className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-160 ease-out-quart hover:text-brand"
         >
           View All
         </Link>
@@ -56,7 +56,7 @@ export default function DefectSummary({ counts }: { counts: DefectCounts }) {
             <Link
               key={key}
               href={CELL[key].href}
-              className="flex flex-col gap-1 rounded-md border border-line-subtle bg-popover px-3 py-2.5 transition-colors duration-150 hover:border-border"
+              className="flex flex-col gap-1 rounded-md border border-line-subtle bg-popover px-3 py-2.5 transition-colors duration-160 ease-out-quart hover:border-border"
             >
               <span
                 className={cn(

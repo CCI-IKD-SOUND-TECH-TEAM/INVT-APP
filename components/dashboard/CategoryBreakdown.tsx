@@ -38,7 +38,7 @@ export default function CategoryBreakdown({ data }: { data: CategoryDatum[] }) {
             <li key={r.category}>
               <Link
                 href={href}
-                className="group -mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors duration-150 hover:bg-popover focus-visible:bg-popover"
+                className="group -mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors duration-160 ease-out-quart hover:bg-popover focus-visible:bg-popover"
               >
                 <span className="w-[112px] shrink-0 truncate text-[0.8125rem] text-foreground">
                   {r.category}
@@ -48,7 +48,7 @@ export default function CategoryBreakdown({ data }: { data: CategoryDatum[] }) {
                   aria-hidden
                 >
                   <span
-                    className="block h-full rounded-full bg-[#4a4a52] transition-[width,background-color] duration-200 ease-out group-hover:bg-[#5a5a63]"
+                    className="block h-full rounded-full bg-[#4a4a52] transition-[width,background-color] duration-220 ease-out-quart group-hover:bg-[#5a5a63]"
                     style={{ width: `${(r.count / max) * 100}%` }}
                   />
                 </span>

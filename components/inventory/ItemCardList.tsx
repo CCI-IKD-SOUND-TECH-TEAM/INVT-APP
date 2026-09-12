@@ -103,7 +103,12 @@ export default function ItemCardList({
 }) {
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+      <p
+        className={cn(
+          "rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground",
+          className
+        )}
+      >
         No items match these filters.
       </p>
     );

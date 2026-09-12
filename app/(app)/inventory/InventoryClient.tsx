@@ -25,8 +25,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { IconArchive as ArchiveBoxArrowDownIcon, IconDownload as ArrowDownTrayIcon, IconUpload as ArrowUpTrayIcon, IconCheck as CheckIcon, IconChevronDown as ChevronDownIcon, IconAlertTriangle as ExclamationTriangleIcon, IconFilter as FunnelIcon, IconList as ListBulletIcon, IconSearch as MagnifyingGlassIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconLayoutGrid as Squares2X2Icon } from "@tabler/icons-react";
+import { IconArchive as ArchiveBoxArrowDownIcon, IconDownload as ArrowDownTrayIcon, IconUpload as ArrowUpTrayIcon, IconCheck as CheckIcon, IconChevronDown as ChevronDownIcon, IconAlertTriangle as ExclamationTriangleIcon, IconList as ListBulletIcon, IconSearch as MagnifyingGlassIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconLayoutGrid as Squares2X2Icon, IconX as XIcon } from "@tabler/icons-react";
 import ItemCardList, { StatusChips } from "@/components/inventory/ItemCardList";
+import FacetedFilter from "@/components/inventory/FacetedFilter";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "table" | "grid";
@@ -307,7 +308,6 @@ function InventoryContent() {
   );
   const [includeRetired, setIncludeRetired] = useState(false);
   const [lowStockOnly, setLowStockOnly] = useState(initialLowStock);
-  const [filterOpen, setFilterOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("table");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -416,14 +416,25 @@ function InventoryContent() {
     setPage(1);
   }
 
+  // Deliberately does not touch `search` — a control scoped to "Filters"
+  // shouldn't silently erase text typed in the separate, always-visible
+  // search box. The search field clears itself.
   function clearFilters() {
-    setSearch("");
     setStatusFilter(new Set());
     setCategoryFilter(new Set());
     setDepartmentFilter(new Set());
     setLowStockOnly(false);
     setIncludeRetired(false);
     setPage(1);
+  }
+
+  // The "no items match" empty state has no adjacent search box to protect —
+  // it's a dedicated recovery action, so clearing search along with every
+  // filter is the expected, helpful behavior there (unlike the toolbar's
+  // scoped Reset Filters button).
+  function clearEverything() {
+    setSearch("");
+    clearFilters();
   }
 
   function downloadTemplate() {
@@ -479,7 +490,7 @@ function InventoryContent() {
         <div className="relative min-w-[220px] flex-1">
           <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-ink-faint" />
           <Input
-            className="pl-10"
+            className="pl-10 pr-9"
             placeholder="Search by item name…"
             value={search}
             onChange={(e) => {
@@ -487,17 +498,69 @@ function InventoryContent() {
               setPage(1);
             }}
           />
-        </div>
-        <Button type="button" variant="secondary" className="relative" onClick={() => setFilterOpen((v) => !v)}>
-          <FunnelIcon className="size-4" /> Filters
-          {activeFilterCount > 0 && (
-            <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[0.6875rem] font-bold text-white">
-              {activeFilterCount}
-            </span>
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setSearch("");
+                setPage(1);
+              }}
+              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-sm p-1 text-ink-faint transition-colors duration-160 ease-out-quart hover:text-foreground"
+            >
+              <XIcon className="size-4" />
+            </button>
           )}
-          <ChevronDownIcon className="size-3.5" />
-        </Button>
-        <label className="ml-1 hidden items-center gap-2 text-[0.8125rem] text-muted-foreground md:flex">
+        </div>
+
+        <FacetedFilter
+          label="Category"
+          options={categories}
+          selected={categoryFilter}
+          onToggle={(v) => toggleSetValue(categoryFilter, setCategoryFilter, v)}
+          onClear={() => {
+            setCategoryFilter(new Set());
+            setPage(1);
+          }}
+        />
+        <FacetedFilter
+          label="Department"
+          options={departments}
+          selected={departmentFilter}
+          onToggle={(v) => toggleSetValue(departmentFilter, setDepartmentFilter, v)}
+          onClear={() => {
+            setDepartmentFilter(new Set());
+            setPage(1);
+          }}
+        />
+        {/* Mobile status filtering lives in StatusChips below — a single-select
+            shortcut suited to a thumb-scrollable row. This multi-select facet
+            is the desktop equivalent; showing both at once gave mobile two
+            controls driving the same statusFilter state with different
+            (single- vs multi-select) semantics. */}
+        <FacetedFilter
+          label="Status"
+          options={ALL_STATUSES}
+          selected={statusFilter}
+          onToggle={(v) => toggleSetValue(statusFilter, setStatusFilter, v)}
+          onClear={() => {
+            setStatusFilter(new Set());
+            setPage(1);
+          }}
+          className="hidden md:inline-flex"
+        />
+
+        <label className="hidden items-center gap-2 text-[0.8125rem] text-muted-foreground md:flex">
+          <Checkbox
+            checked={lowStockOnly}
+            onCheckedChange={(v) => {
+              setLowStockOnly(v === true);
+              setPage(1);
+            }}
+          />
+          Low Stock Only
+        </label>
+        <label className="hidden items-center gap-2 text-[0.8125rem] text-muted-foreground md:flex">
           <Checkbox
             checked={includeRetired}
             onCheckedChange={(v) => {
@@ -508,6 +571,12 @@ function InventoryContent() {
           Include Retired Items
         </label>
 
+        {activeFilterCount > 0 && (
+          <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+            Reset Filters
+          </Button>
+        )}
+
         <div className="ml-auto hidden shrink-0 gap-0.5 rounded-md border border-border bg-surface-sunken p-0.5 md:flex">
           <button
             type="button"
@@ -515,7 +584,7 @@ function InventoryContent() {
             aria-pressed={view === "table"}
             onClick={() => setView("table")}
             className={cn(
-              "flex size-8 items-center justify-center rounded-sm text-ink-faint transition-colors duration-150",
+              "flex size-8 items-center justify-center rounded-sm text-ink-faint transition-colors duration-160 ease-out-quart",
               view === "table" ? "bg-card text-foreground" : "hover:text-foreground"
             )}
           >
@@ -527,7 +596,7 @@ function InventoryContent() {
             aria-pressed={view === "grid"}
             onClick={() => setView("grid")}
             className={cn(
-              "flex size-8 items-center justify-center rounded-sm text-ink-faint transition-colors duration-150",
+              "flex size-8 items-center justify-center rounded-sm text-ink-faint transition-colors duration-160 ease-out-quart",
               view === "grid" ? "bg-card text-foreground" : "hover:text-foreground"
             )}
           >
@@ -535,68 +604,6 @@ function InventoryContent() {
           </button>
         </div>
       </div>
-
-      {filterOpen && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-6 rounded-lg border border-border bg-card p-6">
-          <div className="flex flex-col gap-2">
-            <span className="h-label">Category</span>
-            {categories.map((cat) => (
-              <label key={cat} className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted-foreground">
-                <Checkbox
-                  checked={categoryFilter.has(cat)}
-                  onCheckedChange={() => toggleSetValue(categoryFilter, setCategoryFilter, cat)}
-                />
-                {cat}
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="h-label">Department</span>
-            {departments.map((dept) => (
-              <label key={dept} className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted-foreground">
-                <Checkbox
-                  checked={departmentFilter.has(dept)}
-                  onCheckedChange={() => toggleSetValue(departmentFilter, setDepartmentFilter, dept)}
-                />
-                {dept}
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="h-label">Status</span>
-            {ALL_STATUSES.map((s) => (
-              <label key={s} className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted-foreground">
-                <Checkbox
-                  checked={statusFilter.has(s)}
-                  onCheckedChange={() => toggleSetValue(statusFilter, setStatusFilter, s)}
-                />
-                {s}
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="h-label">Stock</span>
-            <label className="flex cursor-pointer items-center gap-2 text-[0.8125rem] text-muted-foreground">
-              <Checkbox
-                checked={lowStockOnly}
-                onCheckedChange={(v) => {
-                  setLowStockOnly(v === true);
-                  setPage(1);
-                }}
-              />
-              Low stock only
-            </label>
-          </div>
-          <div className="col-span-full flex items-center justify-between border-t border-line-subtle pt-2">
-            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-              Clear Filters
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setFilterOpen(false)}>
-              Done
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Single-select status chips stand in for the filter panel on mobile.
           They drive the same statusFilter set the panel does. */}
@@ -756,8 +763,8 @@ function InventoryContent() {
                       <p className="mb-4 text-muted-foreground">
                         Try widening your search or clearing filters.
                       </p>
-                      <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
-                        Clear Filters
+                      <Button type="button" variant="secondary" size="sm" onClick={clearEverything}>
+                        Clear search &amp; filters
                       </Button>
                     </div>
                   </TableCell>
@@ -785,8 +792,8 @@ function InventoryContent() {
         <div className="rounded-lg border border-dashed border-border px-4 py-16 text-center">
           <p className="h-title mb-1.5">No items match your filters</p>
           <p className="mb-4 text-muted-foreground">Try widening your search or clearing filters.</p>
-          <Button type="button" variant="secondary" size="sm" onClick={clearFilters}>
-            Clear Filters
+          <Button type="button" variant="secondary" size="sm" onClick={clearEverything}>
+            Clear search &amp; filters
           </Button>
         </div>
       )}
