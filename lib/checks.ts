@@ -21,6 +21,22 @@ export function weekStartIso(d: Date = new Date()): string {
   return format(startOfWeek(d, { weekStartsOn: 0 }), "yyyy-MM-dd");
 }
 
+/**
+ * Days until the next service. Sunday is both the service day and the day the
+ * check week opens, so this is 0 on Sunday and 6 on Monday — the same Sunday
+ * anchor weekStartIso uses.
+ */
+export function daysUntilService(d: Date = new Date()): number {
+  return (7 - d.getDay()) % 7;
+}
+
+/** The dashboard header's countdown, in the plain wording staff would use. */
+export function serviceCountdownLabel(days: number): string {
+  if (days === 0) return "Service today";
+  if (days === 1) return "Service tomorrow";
+  return `Service in ${days} days`;
+}
+
 /** Present, but fewer units seen than the item's recorded quantity. */
 export function isShortfall(entry: CheckEntry): boolean {
   return entry.result === "present" && entry.quantity_seen < entry.quantity_expected;

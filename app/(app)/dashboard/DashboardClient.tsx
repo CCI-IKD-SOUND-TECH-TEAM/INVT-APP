@@ -1,74 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { IconArchive as ArchiveBoxIcon, IconPlus as PlusIcon } from "@tabler/icons-react";
-import {
-  activityQuery,
-  checksQuery,
-  dashboardQuery,
-  departmentItemCountsQuery,
-} from "@/lib/queries";
+import { activityQuery, dashboardQuery } from "@/lib/queries";
+import { useWeekCheckSlots } from "@/lib/queries/use-week-check-slots";
 import { useReference } from "@/lib/queries/use-reference";
-import { weekStartIso } from "@/lib/checks";
-import type { CheckType } from "@/lib/types";
+import { daysUntilService, departmentCheckStreak } from "@/lib/checks";
+import { worstLowStockItem } from "@/lib/inventory";
 import { Button } from "@/components/ui/button";
-import AttentionStrip from "@/components/dashboard/AttentionStrip";
-import SectionCards from "@/components/dashboard/SectionCards";
-import CategoryBreakdown from "@/components/dashboard/CategoryBreakdown";
-import DefectSummary from "@/components/dashboard/DefectSummary";
-import DashboardTabs from "@/components/dashboard/DashboardTabs";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import WorkQueue from "@/components/dashboard/WorkQueue";
+import StatTiles from "@/components/dashboard/StatTiles";
 import WeeklyCheckCard from "@/components/dashboard/WeeklyCheckCard";
+import OpenDefectsTable from "@/components/dashboard/OpenDefectsTable";
+import RecentActivity from "@/components/dashboard/RecentActivity";
 
 /**
- * Every number on this screen now arrives pre-aggregated from
- * dashboard_stats() (migration 0008). It used to be computed here by iterating
- * the full item and defect arrays the layout had shipped to the browser.
+ * The dashboard answers one question: what needs doing before Sunday.
  *
- * The data is prefetched by the server component above and hydrated into the
- * same cache keys, so these hooks resolve on first render — no client waterfall.
+ * Everything above the fold is ordered by how soon it needs a decision — the
+ * work queue, then the numbers that give it context — and only below that do
+ * the standing surfaces (checks, defects, activity) appear.
+ *
+ * Every number arrives pre-aggregated from dashboard_stats() (migrations 0008
+ * and 0012). The data is prefetched by the server component above and hydrated
+ * into the same cache keys, so these hooks resolve on first render.
  */
-const CHECK_TYPES: CheckType[] = ["setup", "set_down"];
-
 export default function DashboardClient() {
-  const { data: stats } = useQuery(dashboardQuery());
-  const { data: activity = [] } = useQuery(activityQuery(10));
-
-  // The attention strip's checks segment: department × type slots with items
-  // to check but no session this week. Shares cache entries with the checks
-  // page and WeeklyCheckCard, so this costs no extra requests.
+  const { data: stats, dataUpdatedAt } = useQuery(dashboardQuery());
+  const { data: activity = [] } = useQuery(activityQuery(8));
   const { departments, departmentIdByName } = useReference();
-  // Twelve weeks to share WeeklyCheckCard's cache entry (it reads history for
-  // streaks); only this week matters for the strip.
-  const { data: checkSessions = [] } = useQuery(checksQuery(12));
-  const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
-  const currentWeek = weekStartIso();
-
-  const checksNotStarted = useMemo(() => {
-    let count = 0;
-    for (const name of departments) {
-      const id = departmentIdByName(name);
-      if (!id || (checkableCount[id] ?? 0) === 0) continue;
-      for (const type of CHECK_TYPES) {
-        const started = checkSessions.some(
-          (s) =>
-            s.department_id === id &&
-            s.session_type === type &&
-            s.week_start === currentWeek &&
-            s.status !== "abandoned"
-        );
-        if (!started) count++;
-      }
-    }
-    return count;
-  }, [
-    departments,
-    departmentIdByName,
-    checkableCount,
-    checkSessions,
-    currentWeek,
-  ]);
+  const { slots, notStarted, sessions } = useWeekCheckSlots();
 
   // Suspended by the boundary in page.tsx on first load; on a cache miss after
   // an invalidation this keeps the previous frame rather than unmounting.
@@ -91,58 +54,60 @@ export default function DashboardClient() {
     );
   }
 
+  const worstLowStock = worstLowStockItem(stats.lowStockItems);
+
+  // The all-clear state's reward line: the longest run any department has.
+  const bestStreak = departments.reduce<{
+    deptName: string;
+    weeks: number;
+  } | null>((best, deptName) => {
+    const id = departmentIdByName(deptName);
+    if (!id) return best;
+    const weeks = departmentCheckStreak(sessions, id);
+    return !best || weeks > best.weeks ? { deptName, weeks } : best;
+  }, null);
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          {/* Below md: the shared SiteHeader is hidden, so the page carries its
-              own title — and the tab bar's centre button is "Log a defect". */}
-          <p className="h-label md:hidden">Ikorodu · Media Team</p>
-          <h1 className="h-headline md:hidden">Dashboard</h1>
-          <p className="mt-1.5 text-muted-foreground md:mt-0">
-            An overview of every asset, defect, and repair in flight.
-          </p>
-        </div>
-        <Button asChild className="hidden md:inline-flex">
-          <Link href="/defects?log=1">
-            <PlusIcon className="size-4" /> Log a defect
-          </Link>
-        </Button>
-      </div>
+      <DashboardHeader updatedAt={dataUpdatedAt} notStarted={notStarted} />
 
-      <AttentionStrip
-        data={{
-          checksNotStarted,
-          openDefects: stats.defectCounts["Open"] ?? 0,
-          defectiveAssets: stats.defectiveAssets,
-          lowStockCount: stats.lowStockCount,
-        }}
+      <WorkQueue
+        notStarted={notStarted}
+        openDefectsTotal={stats.openDefectsTotal}
+        highOpenCount={stats.highOpenCount}
+        oldestOpenDays={stats.oldestOpenDays}
+        lowStockCount={stats.lowStockCount}
+        worstLowStock={worstLowStock}
+        bestStreak={bestStreak}
+        // The check week opens on Sunday, the service day: a pending check is
+        // due today, not overdue.
+        serviceDay={daysUntilService() === 0}
+        hasCheckSlots={slots.length > 0}
       />
 
-      <SectionCards
-        data={{
-          totalAssets: stats.totalAssets,
-          activeAssets: stats.activeAssets,
-          defectiveAssets: stats.defectiveAssets,
-          lowStockCount: stats.lowStockCount,
-        }}
+      <StatTiles
+        totalAssets={stats.totalAssets}
+        itemsAddedLast30={stats.itemsAddedLast30}
+        defectiveAssets={stats.defectiveAssets}
+        defectsOpenedLast30={stats.defectsOpenedLast30}
+        defectsResolvedLast30={stats.defectsResolvedLast30}
+        lowStockCount={stats.lowStockCount}
+        worstLowStock={worstLowStock}
       />
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
-        {/* Stacked on mobile the dated task outranks the activity feed, so the
-            right-hand column comes first below lg:. Matches handoff screen 2a:
-            counts → weekly check → defects → activity. */}
-        <div className="order-last lg:order-none">
-          <DashboardTabs
-            activity={activity}
-            lowStockItems={stats.lowStockItems}
+      {/* The dated work leads the wide column; the standing record sits beside
+          it. Stacking below lg keeps that order without any reordering. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_1fr]">
+        <div className="flex flex-col gap-4">
+          <WeeklyCheckCard />
+          <OpenDefectsTable
+            rows={stats.openDefects}
+            total={stats.openDefectsTotal}
           />
         </div>
 
         <div className="flex flex-col gap-4">
-          <WeeklyCheckCard />
-          <DefectSummary counts={stats.defectCounts} />
-          <CategoryBreakdown data={stats.categoryBreakdown} />
+          <RecentActivity activity={activity} />
         </div>
       </div>
     </div>

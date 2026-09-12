@@ -2,6 +2,7 @@ import type {
   AssetType,
   AuditEntry,
   Category,
+  DefectSeverity,
   DefectStatus,
   Defect,
   Department,
@@ -36,6 +37,24 @@ export interface LowStockItem {
   category_name: string;
 }
 
+/**
+ * One row of the dashboard's open-defect table. Narrower than DefectWithItem
+ * by design: the table shows five rows, so the repair history, the reporter,
+ * and the resolution fields are not in the payload. Produced by the
+ * `openDefects` branch of dashboard_stats (migration 0012).
+ */
+export interface OpenDefectRow {
+  id: string;
+  item_id: string;
+  item_name: string;
+  /** Null when the defect is against the whole item, not one unit. */
+  unit_label: string | null;
+  description: string;
+  severity: DefectSeverity;
+  /** `YYYY-MM-DD` — a date column, so no time component to reason about. */
+  date_reported: string;
+}
+
 export interface DashboardStats {
   /** Includes retired — drives the "No inventory yet" empty state. */
   totalItems: number;
@@ -47,6 +66,24 @@ export interface DashboardStats {
   lowStockItems: LowStockItem[];
   categoryBreakdown: { category: string; count: number }[];
   defectCounts: Record<DefectStatus, number>;
+
+  /* The 30-day context under each stat tile (migration 0012). */
+  itemsAddedLast30: number;
+  defectsOpenedLast30: number;
+  /**
+   * The same number as `defectCounts.Resolved` — one SQL column feeds both, so
+   * the tile and the defect summary can never disagree. Carries that window's
+   * quirk: a defect resolved with no repair event falls outside it.
+   */
+  defectsResolvedLast30: number;
+
+  /* The open-defect work queue (migration 0012). */
+  /** Top 5 by severity, then oldest first. */
+  openDefects: OpenDefectRow[];
+  openDefectsTotal: number;
+  highOpenCount: number;
+  /** Age of the oldest open defect in days; 0 when there are none. */
+  oldestOpenDays: number;
 }
 
 /**

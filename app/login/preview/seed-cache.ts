@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { differenceInCalendarDays } from "date-fns";
 import {
   activityQuery,
   checkSessionQuery,
@@ -24,8 +25,9 @@ import type {
   ItemListRow,
   ItemStatusCounts,
   LowStockItem,
+  OpenDefectRow,
 } from "@/lib/api-types";
-import type { DefectStatus, ItemStatus } from "@/lib/types";
+import type { DefectSeverity, DefectStatus, ItemStatus } from "@/lib/types";
 import { SEED } from "./fixture";
 
 /**
@@ -49,7 +51,7 @@ export function usePreviewCache() {
     profiles: SEED.profiles,
   });
 
-  queryClient.setQueryData(activityQuery(10).queryKey, SEED.activity.slice(0, 10));
+  queryClient.setQueryData(activityQuery(8).queryKey, SEED.activity.slice(0, 8));
   queryClient.setQueryData(checksQuery(1).queryKey, SEED.checkSessions);
   queryClient.setQueryData(dashboardQuery().queryKey, buildStats());
 
@@ -226,6 +228,44 @@ function buildStats(): DashboardStats {
           thirtyDaysAgo
     ).length;
 
+  const resolvedLast30 = withinWindow("Resolved");
+
+  // Mirrors the open_rows / open_stats CTEs: High before Medium before Low,
+  // then oldest first.
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const severityRank: Record<DefectSeverity, number> = {
+    High: 0,
+    Medium: 1,
+    Low: 2,
+  };
+  const open = defects.filter((d) => d.status === "Open");
+  const openSorted = [...open].sort(
+    (a, b) =>
+      severityRank[a.severity] - severityRank[b.severity] ||
+      a.date_reported.localeCompare(b.date_reported)
+  );
+  const openDefects: OpenDefectRow[] = openSorted.slice(0, 5).map((d) => ({
+    id: d.id,
+    item_id: d.item_id,
+    item_name: itemById.get(d.item_id)?.item_name ?? "Unknown item",
+    // No fixture item is unit-tracked, so every defect is item-scoped.
+    unit_label: null,
+    description: d.description,
+    severity: d.severity,
+    date_reported: d.date_reported,
+  }));
+  const oldestOpenDays = openSorted.length
+    ? Math.max(
+        0,
+        ...openSorted.map((d) =>
+          differenceInCalendarDays(new Date(), new Date(d.date_reported))
+        )
+      )
+    : 0;
+
+  const daysAgo = (iso: string) =>
+    differenceInCalendarDays(new Date(), new Date(iso));
+
   return {
     totalItems: items.length,
     totalAssets: nonRetired.length,
@@ -239,10 +279,22 @@ function buildStats(): DashboardStats {
     lowStockItems,
     categoryBreakdown,
     defectCounts: {
-      Open: defects.filter((d) => d.status === "Open").length,
+      Open: open.length,
       "Under Repair": defects.filter((d) => d.status === "Under Repair").length,
-      Resolved: withinWindow("Resolved"),
+      Resolved: resolvedLast30,
       "Not Repairable": withinWindow("Not Repairable"),
     },
+
+    itemsAddedLast30: nonRetired.filter((i) => daysAgo(i.created_at) <= 30)
+      .length,
+    defectsOpenedLast30: defects.filter((d) => daysAgo(d.date_reported) <= 30)
+      .length,
+    // Same value as defectCounts.Resolved, as in the SQL.
+    defectsResolvedLast30: resolvedLast30,
+
+    openDefects,
+    openDefectsTotal: open.length,
+    highOpenCount: open.filter((d) => d.severity === "High").length,
+    oldestOpenDays,
   };
 }

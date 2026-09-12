@@ -94,7 +94,11 @@ function DefectLogContent() {
 
   const [tab, setTab] = useState<"open" | "all">("open");
   const [logOpen, setLogOpen] = useState(searchParams.get("log") === "1");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?defect=<id>` opens straight onto one record — the dashboard's open-defect
+  // table links here, so a row lands on the defect rather than the list.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    searchParams.get("defect")
+  );
 
   const openDefects = defects.filter(
     (d) => d.status === "Open" || d.status === "Under Repair"
@@ -221,8 +225,12 @@ function DefectLogContent() {
       {selectedDefect && (
         <DefectDrawer
           defect={selectedDefect}
-
-          onClose={() => setSelectedId(null)}
+          onClose={() => {
+            setSelectedId(null);
+            // Drop `?defect=` so a refresh or a back-navigation doesn't
+            // reopen what the user just closed. Same handshake as `?log=1`.
+            if (searchParams.get("defect")) router.replace("/defects");
+          }}
         />
       )}
 

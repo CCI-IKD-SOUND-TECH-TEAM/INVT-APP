@@ -95,11 +95,18 @@ family (char/bone), no blue, no second saturated hue.
 - **Status badge** — fully rounded pill, transparent fill, 1px border,
   `4px 10px` padding, colored leading icon, neutral-ink label text. Same
   icon+color mapping everywhere a status appears.
-- **KPI card** (`components/dashboard/SectionCards.tsx`) — label (h-label) +
-  optional tone-tinted icon chip (34px, desktop only) → Anton display value
-  (`clamp(2rem,6cqi,2.75rem)`, tabular-nums) → muted footnote. Numeral always
-  neutral ink; tone lives on the icon chip only. Hover: `-translate-y-0.5` +
-  `border-brand/40`, 150ms.
+- **Stat tiles** (`components/dashboard/StatTiles.tsx`) — replaced the four
+  KPI cards (2026-09-12). One bordered container, three tiles, `divide-x
+  divide-line-subtle`; per tile: `h-label` → Anton value
+  (`clamp(1.75rem,10cqi,2.5rem)`, tabular-nums, `@container/tile`) → `text-xs`
+  30-day context line. No tone, no icon chip, no translate on hover — the work
+  queue above carries urgency, so a tinted tile would split the signal.
+- **Work queue** (`components/dashboard/WorkQueue.tsx`) — the dashboard's lead
+  surface. `<ul>` with `divide-y divide-line-subtle`; each row is a 6px tone
+  dot (`mt-2`, first-line aligned) + a full sentence + a `size="sm"
+  variant="secondary"` CTA. Counts are `font-bold tabular-nums` in neutral ink
+  — tone stays on the dot (Glyph-Only Rule). Empty state is a positive
+  all-clear line with the best check streak beneath it.
 - **Severity** — quiet text, never a badge (keeps a defect row to one pill).
 
 ## Resolved drift (2026-09-12 dashboard review)
@@ -120,3 +127,45 @@ the resulting utility classes):
    promises.
 
 No remaining open items from this pass.
+
+## Dashboard restructure (2026-09-12, second pass)
+
+The first pass fixed compliance; the screen still read as a summary of state
+when its users need a work queue before Sunday. Restructured, same tokens —
+no new hue, no shadows, no charts.
+
+What changed:
+
+1. **Six repeating surfaces → one queue.** Defective assets, low stock and open
+   defects each appeared in up to three places (attention strip, KPI card,
+   defect summary). `AttentionStrip`, `SectionCards`, `DefectSummary` and
+   `DashboardTabs` are deleted. Their signal now lives in `WorkQueue` as
+   sentences with buttons.
+2. **Numbers carry context.** Every stat tile has a 30-day comparison from new
+   `dashboard_stats` keys (migration `0012_dashboard_stats_v2.sql`). "Active
+   Assets" is gone — it was Total minus Defective.
+3. **The dated task leads.** `DashboardHeader` prints the date, the countdown
+   to Sunday and a freshness stamp, and carries the one primary action
+   (`StartCheckMenu`). `WeeklyCheckCard` moved to the wide column with a
+   progress bar, hairline rows instead of bordered tiles, and a "to check"
+   item count per department from md: up.
+4. **Open defects are rows, not a count.** `OpenDefectsTable` lists the top
+   five by severity then age, straight from SQL.
+5. **Fewer nested containers.** Card-inside-card treatments in the check grid
+   and defect cells became hairline dividers.
+
+Conventions worth keeping:
+
+- Anything derived from `Date.now()` goes through `useNow()`
+  (`lib/use-now.ts`), which is `null` until mount. The server renders in UTC
+  and the users read in UTC+1; `loading.tsx` reserves the header meta line so
+  nothing shifts on hydration. It uses `useSyncExternalStore`, not an effect —
+  `react-hooks/set-state-in-effect` rejects the effect form.
+- Check-slot maths lives in `useWeekCheckSlots()` and the start flow in
+  `useStartCheck()`. Two copies of "which checks are outstanding" is one
+  divergence away from the header and the card disagreeing.
+- Verify at 390px through `/login/preview/frame?screen=dashboard` — headless
+  Chrome clamps its window to ~500px, so that iframe is the only true 390px
+  viewport. Its probe reported `overflow=no` for this layout.
+- `CategoryBreakdown.tsx` is no longer mounted on the dashboard and is
+  currently unreferenced.

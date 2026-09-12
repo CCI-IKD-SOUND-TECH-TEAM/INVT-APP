@@ -32,8 +32,8 @@ export default async function DashboardPage() {
       queryFn: getDashboardStats,
     }),
     queryClient.prefetchQuery({
-      ...activityQuery(10),
-      queryFn: () => getActivity(10),
+      ...activityQuery(8),
+      queryFn: () => getActivity(8),
     }),
     // WeeklyCheckCard, the attention strip, and the reference labels render in
     // the same frame — prefetching here keeps them from popping in after

@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import {
   IconAlertCircleFilled as ExclamationCircleIcon,
   IconCircleCheckFilled as CheckCircleIcon,
@@ -11,96 +9,48 @@ import {
   IconPlayerPlay as PlayIcon,
   IconProgress as ProgressIcon,
 } from "@tabler/icons-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { checksQuery, departmentItemCountsQuery } from "@/lib/queries";
-import { queryKeys } from "@/lib/queries/keys";
-import { useReference } from "@/lib/queries/use-reference";
-import { useStartCheckSession } from "@/lib/mutations/checks";
-import {
-  CHECK_TYPE_LABEL,
-  departmentCheckStreak,
-  weekStartIso,
-} from "@/lib/checks";
+import { useWeekCheckSlots } from "@/lib/queries/use-week-check-slots";
+import type { CheckSlot } from "@/lib/queries/use-week-check-slots";
+import { useStartCheck, slotKey } from "@/components/dashboard/use-start-check";
+import { CHECK_TYPE_LABEL, departmentCheckStreak } from "@/lib/checks";
 import type { CheckSession, CheckType } from "@/lib/types";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 const CHECK_TYPES: CheckType[] = ["setup", "set_down"];
 
-/* Every row — header included — shares this grid, so the two status columns
-   line up down the whole card regardless of how long a cell's label is. */
-const ROW_GRID = "grid grid-cols-[1fr_4.75rem_4.75rem] items-center gap-x-2";
+/* Every row — header included — shares this grid, so the status columns line
+   up down the whole card regardless of how long a cell's label is. The size
+   column appears from md: up, where the card is wide enough that the statuses
+   would otherwise be marooned at the far edge; a hidden grid child occupies no
+   cell, so the narrow layout is a clean three columns. */
+const ROW_GRID =
+  "grid grid-cols-[1fr_4.75rem_4.75rem] items-center gap-x-2 md:grid-cols-[1fr_auto_4.75rem_4.75rem] md:gap-x-4";
 
 /**
  * This week's check status per department × type. Each cell links to the
  * session when one exists; a not-started cell starts one in a single tap and
  * navigates straight into it — the cue and the action are the same control.
+ *
+ * The slot maths and the start flow both come from shared hooks, so the
+ * dashboard header's "Start check" button and these cells can't disagree
+ * about what's outstanding.
  */
 export default function WeeklyCheckCard() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const { departments, departmentIdByName } = useReference();
-  // Twelve weeks, not one: the grid renders only this week, but the streaks
-  // and the checks-caught footer read the history. Shares the checks page's
-  // cache entry, and the dashboard server component prefetches it.
-  const { data: checkSessions = [] } = useQuery(checksQuery(12));
-  // A department with nothing to check can't start a session — its cell links
-  // to the checks page, whose empty state explains why.
-  const { data: checkableCount = {} } = useQuery(departmentItemCountsQuery());
-  const startCheckSession = useStartCheckSession();
-  const currentWeek = weekStartIso();
+  const { slots, done, sessions, checkableCount } = useWeekCheckSlots();
+  const { start, pendingKey, error } = useStartCheck();
 
-  const [pendingCell, setPendingCell] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function startFromCell(
-    deptId: string,
-    deptName: string,
-    type: CheckType
-  ) {
-    const key = `${deptName}:${type}`;
-    setPendingCell(key);
-    setError(null);
-    try {
-      // Race-safe: the action returns the existing session when someone else
-      // started this check first, so both taps land in the same walkthrough.
-      const session = await startCheckSession.mutateAsync({
-        department_id: deptId,
-        session_type: type,
-      });
-      router.push(`/checks/${session.id}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start that check.");
-      // The usual cause is state this card hasn't seen yet (e.g. completed on
-      // another device) — refetch so the grid corrects itself.
-      queryClient.invalidateQueries({ queryKey: queryKeys.checks.all() });
-    }
-    setPendingCell(null);
-  }
-
-  const cell = (deptId: string | undefined, type: CheckType) =>
-    deptId
-      ? checkSessions.find(
-          (s) =>
-            s.department_id === deptId &&
-            s.session_type === type &&
-            s.week_start === currentWeek &&
-            s.status !== "abandoned"
-        )
-      : undefined;
-
-  // "2 of 6 done this week" — department × type slots for departments that
-  // actually have items, against this week's completed sessions.
-  const slots = departments.reduce((n, name) => {
-    const id = departmentIdByName(name);
-    return id && (checkableCount[id] ?? 0) > 0 ? n + CHECK_TYPES.length : n;
-  }, 0);
-  const doneThisWeek = checkSessions.filter(
-    (s) => s.week_start === currentWeek && s.status === "completed"
-  ).length;
+  // One row per department, its two type cells beside it.
+  const byDepartment = slots.reduce<Map<string, CheckSlot[]>>((acc, slot) => {
+    const list = acc.get(slot.deptName) ?? [];
+    list.push(slot);
+    acc.set(slot.deptName, list);
+    return acc;
+  }, new Map());
 
   // Proof the ritual pays: items the last 12 weeks of checks flagged.
-  const caught = checkSessions
+  const caught = sessions
     .filter((s) => s.status === "completed")
     .reduce(
       (n, s) =>
@@ -114,25 +64,31 @@ export default function WeeklyCheckCard() {
   return (
     <Card>
       <CardHeader className="mb-1 items-start">
-        <div className="flex flex-col gap-0.5">
-          <CardTitle>Weekly Checks</CardTitle>
-          <span className="text-xs text-ink-faint">
-            {slots > 0
-              ? `${doneThisWeek} of ${slots} done this week`
-              : "This week"}
-          </span>
-        </div>
+        <CardTitle>This week&apos;s checks</CardTitle>
         <Link
           href="/checks"
           className="shrink-0 text-[0.8125rem] font-bold text-muted-foreground transition-colors duration-160 ease-out-quart hover:text-brand"
         >
-          Open Checks
+          Open checks
         </Link>
       </CardHeader>
 
+      {slots.length > 0 && (
+        <div className="flex items-center gap-3">
+          <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">
+            {done} of {slots.length} done
+          </span>
+          <Progress
+            value={(done / slots.length) * 100}
+            aria-label={`${done} of ${slots.length} checks done this week`}
+          />
+        </div>
+      )}
+
       {/* Column headers print once here instead of inside every cell. */}
-      <div className={cn(ROW_GRID, "px-3 pb-1.5")}>
+      <div className={cn(ROW_GRID, "px-1 pb-1")}>
         <span />
+        <span className="hidden h-label text-right md:block">To check</span>
         {CHECK_TYPES.map((type) => (
           <span key={type} className="h-label text-center">
             {CHECK_TYPE_LABEL[type]}
@@ -140,23 +96,16 @@ export default function WeeklyCheckCard() {
         ))}
       </div>
 
-      <div className="flex flex-col gap-2">
-        {departments.map((deptName) => {
-          const deptId = departmentIdByName(deptName);
-          const canStart = deptId ? (checkableCount[deptId] ?? 0) > 0 : false;
+      {/* Hairline dividers, not bordered tiles — a row inside a card doesn't
+          need its own container to read as a row. */}
+      <div className="divide-y divide-line-subtle">
+        {[...byDepartment.entries()].map(([deptName, deptSlots]) => {
           // The streak is the reward leg of the habit loop: consecutive fully
           // checked weeks, shown once there are two to point at.
-          const streak = deptId
-            ? departmentCheckStreak(checkSessions, deptId)
-            : 0;
+          const streak = departmentCheckStreak(sessions, deptSlots[0].deptId);
+          const itemCount = checkableCount[deptSlots[0].deptId] ?? 0;
           return (
-            <div
-              key={deptName}
-              className={cn(
-                ROW_GRID,
-                "rounded-md border border-line-subtle bg-popover px-3 py-2"
-              )}
-            >
+            <div key={deptName} className={cn(ROW_GRID, "px-1 py-1.5")}>
               <span className="min-w-0 truncate text-sm font-bold">
                 {deptName}
                 {streak >= 2 && (
@@ -168,25 +117,28 @@ export default function WeeklyCheckCard() {
                   </span>
                 )}
               </span>
-              {CHECK_TYPES.map((type) => (
+              {/* How big the check is, before you commit to starting it. */}
+              <span className="hidden whitespace-nowrap text-xs tabular-nums text-ink-faint md:block md:text-right">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </span>
+              {deptSlots.map((slot) => (
                 <CheckCell
-                  key={type}
-                  type={type}
-                  deptName={deptName}
-                  session={cell(deptId, type)}
-                  canStart={canStart}
-                  pending={pendingCell === `${deptName}:${type}`}
-                  onStart={
-                    deptId
-                      ? () => startFromCell(deptId, deptName, type)
-                      : undefined
-                  }
+                  key={slot.type}
+                  slot={slot}
+                  pending={pendingKey === slotKey(slot)}
+                  onStart={() => start(slot)}
                 />
               ))}
             </div>
           );
         })}
       </div>
+
+      {slots.length === 0 && (
+        <p className="py-6 text-center text-[0.8125rem] text-ink-faint">
+          No department has items to check yet.
+        </p>
+      )}
 
       {error && (
         <p className="rounded-md border border-brand-deep bg-brand-tint px-2.5 py-1.5 text-xs text-brand">
@@ -269,23 +221,19 @@ const CELL_CLASS =
   "flex min-h-10 items-center justify-center gap-1.5 rounded-sm py-1 transition-colors duration-160 ease-out-quart hover:bg-secondary";
 
 function CheckCell({
-  type,
-  deptName,
-  session,
-  canStart,
+  slot,
   pending,
   onStart,
 }: {
-  type: CheckType;
-  deptName: string;
-  session: CheckSession | undefined;
-  canStart: boolean;
+  slot: CheckSlot;
   pending: boolean;
-  onStart?: () => void;
+  onStart: () => void;
 }) {
-  // Not started, and startable: the cell IS the start button — one tap
-  // creates the session and lands in the walkthrough, no detour via /checks.
-  if (!session && canStart && onStart) {
+  const { session, deptName, type } = slot;
+
+  // Not started: the cell IS the start button — one tap creates the session
+  // and lands in the walkthrough, no detour via /checks.
+  if (!session) {
     const label = `${deptName} ${CHECK_TYPE_LABEL[type]}: not started — start now`;
     return (
       <button
@@ -312,7 +260,7 @@ function CheckCell({
 
   return (
     <Link
-      href={session ? `/checks/${session.id}` : "/checks"}
+      href={`/checks/${session.id}`}
       title={label}
       aria-label={label}
       className={CELL_CLASS}

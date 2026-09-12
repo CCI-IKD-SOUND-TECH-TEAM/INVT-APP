@@ -1,3 +1,4 @@
+import type { LowStockItem } from "./api-types";
 import type { InventoryItem } from "./types";
 
 /**
@@ -18,6 +19,40 @@ export function isLowStock(
     typeof item.minimum_stock_threshold === "number" &&
     item.quantity <= item.minimum_stock_threshold
   );
+}
+
+/**
+ * How much of the threshold is left, as a fraction — 0.2 means the item is at
+ * a fifth of where it should be. A null threshold can't reach here from a
+ * low-stock row (the generated column requires one), but the `|| 1` keeps the
+ * function total for any caller.
+ */
+export function stockRatio(
+  item: Pick<LowStockItem, "quantity" | "minimum_stock_threshold">
+): number {
+  return item.quantity / (item.minimum_stock_threshold || 1);
+}
+
+/**
+ * The item furthest below its threshold — what the dashboard names when it
+ * says "worst: XLR cables 1 of 5". Ratio first so a 1-of-10 beats a 4-of-5,
+ * then raw quantity as the tiebreak.
+ *
+ * Shared so the work-queue sentence and the stat tile can't name different
+ * items for the same word.
+ */
+export function worstLowStockItem(items: LowStockItem[]): LowStockItem | null {
+  let worst: LowStockItem | null = null;
+  for (const item of items) {
+    if (
+      !worst ||
+      stockRatio(item) < stockRatio(worst) ||
+      (stockRatio(item) === stockRatio(worst) && item.quantity < worst.quantity)
+    ) {
+      worst = item;
+    }
+  }
+  return worst;
 }
 
 /**

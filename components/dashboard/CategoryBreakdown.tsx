@@ -15,8 +15,8 @@ export default function CategoryBreakdown({ data }: { data: CategoryDatum[] }) {
 
   return (
     <Card>
-      <CardHeader className="mb-3">
-        <CardTitle>Assets by Category</CardTitle>
+      <CardHeader className="mb-1">
+        <CardTitle>Assets by category</CardTitle>
         <span className="text-[0.8125rem] tabular-nums text-ink-faint">
           {total} total
         </span>
