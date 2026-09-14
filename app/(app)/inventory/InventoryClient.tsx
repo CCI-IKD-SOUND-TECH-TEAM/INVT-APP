@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
-import { itemStatusCountsQuery, itemsQuery } from "@/lib/queries";
+import { defectsQuery, itemStatusCountsQuery, itemsQuery } from "@/lib/queries";
 import { useReference } from "@/lib/queries/use-reference";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -14,8 +14,9 @@ import {
   useReactivateItem,
   useRetireItem,
 } from "@/lib/mutations/items";
+import { useResolveDefect } from "@/lib/mutations/defects";
 import { formatUnit } from "@/lib/inventory";
-import type { ItemListRow } from "@/lib/api-types";
+import type { DefectWithItem, ItemListRow } from "@/lib/api-types";
 import type { InventoryItem, ItemStatus, NewItemInput } from "@/lib/types";
 import { categoryIcon } from "@/lib/category-icons";
 import { itemImage } from "@/lib/category-images";
@@ -24,8 +25,10 @@ import Modal from "@/components/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { IconArchive as ArchiveBoxArrowDownIcon, IconDownload as ArrowDownTrayIcon, IconUpload as ArrowUpTrayIcon, IconCheck as CheckIcon, IconChevronDown as ChevronDownIcon, IconAlertTriangle as ExclamationTriangleIcon, IconList as ListBulletIcon, IconSearch as MagnifyingGlassIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconLayoutGrid as Squares2X2Icon, IconX as XIcon } from "@tabler/icons-react";
+import { IconArchive as ArchiveBoxArrowDownIcon, IconDownload as ArrowDownTrayIcon, IconUpload as ArrowUpTrayIcon, IconCheck as CheckIcon, IconChevronDown as ChevronDownIcon, IconAlertTriangle as ExclamationTriangleIcon, IconList as ListBulletIcon, IconSearch as MagnifyingGlassIcon, IconPencil as PencilSquareIcon, IconPlus as PlusIcon, IconLayoutGrid as Squares2X2Icon, IconTool as WrenchScrewdriverIcon, IconX as XIcon } from "@tabler/icons-react";
 import ItemCardList, { StatusChips } from "@/components/inventory/ItemCardList";
 import FacetedFilter from "@/components/inventory/FacetedFilter";
 import { cn } from "@/lib/utils";
@@ -68,8 +71,10 @@ function InventoryCard({
   lastChecked,
   highlighted,
   reactivating,
+  fixableDefectCount,
   onRetire,
   onReactivate,
+  onMarkFixed,
 }: {
   item: ItemListRow;
   categoryLabel: string;
@@ -77,8 +82,11 @@ function InventoryCard({
   lastChecked: string | null;
   highlighted: boolean;
   reactivating: boolean;
+  /** Open/Under Repair defects against this item — 0 hides the Mark Fixed action. */
+  fixableDefectCount: number;
   onRetire: () => void;
   onReactivate: () => void;
+  onMarkFixed: () => void;
 }) {
   const lowStock = item.is_low_stock;
 
@@ -135,6 +143,20 @@ function InventoryCard({
                 <PencilSquareIcon className="size-4" />
               </Link>
             </Button>
+            {(item.status === "Defective" || item.status === "Under Repair") &&
+              fixableDefectCount > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-ink-faint hover:bg-brand-tint hover:text-brand"
+                  aria-label={`Mark ${item.item_name} fixed`}
+                  title="Mark fixed"
+                  onClick={onMarkFixed}
+                >
+                  <WrenchScrewdriverIcon className="size-4" />
+                </Button>
+              )}
             {item.status === "Retired" ? (
               <Button
                 type="button"
@@ -281,6 +303,21 @@ function InventoryContent() {
   const reactivate = useReactivateItem();
   const createItem = useCreateItem();
 
+  // Open/Under Repair defects, grouped by item — drives which Defective /
+  // Under Repair items get a "Mark Fixed" quick action instead of sending
+  // the user hunting through the Defects page for the matching record.
+  const { data: allDefects = [] } = useQuery(defectsQuery());
+  const fixableDefectsByItem = useMemo(() => {
+    const map = new Map<string, DefectWithItem[]>();
+    for (const d of allDefects) {
+      if (d.status !== "Open" && d.status !== "Under Repair") continue;
+      const arr = map.get(d.item_id) ?? [];
+      arr.push(d);
+      map.set(d.item_id, arr);
+    }
+    return map;
+  }, [allDefects]);
+
   // "3 days ago" from the weekly presence checks; null when never checked.
   // Joined onto each row by getItemsPage for the visible page only.
   const lastCheckedLabel = (item: ItemListRow): string | null =>
@@ -314,6 +351,7 @@ function InventoryContent() {
   const [page, setPage] = useState(1);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [retireTarget, setRetireTarget] = useState<ItemListRow | null>(null);
+  const [fixTarget, setFixTarget] = useState<ItemListRow | null>(null);
 
   // Typing must not fire a request per keystroke — the query key only moves
   // once the user pauses.
@@ -720,6 +758,20 @@ function InventoryContent() {
                             <PencilSquareIcon className="size-4" />
                           </Link>
                         </Button>
+                        {(item.status === "Defective" || item.status === "Under Repair") &&
+                          (fixableDefectsByItem.get(item.id)?.length ?? 0) > 0 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-ink-faint hover:bg-brand-tint hover:text-brand"
+                              aria-label={`Mark ${item.item_name} fixed`}
+                              title="Mark fixed"
+                              onClick={() => setFixTarget(item)}
+                            >
+                              <WrenchScrewdriverIcon className="size-4" />
+                            </Button>
+                          )}
                         {item.status === "Retired" ? (
                           <Button
                             type="button"
@@ -783,8 +835,10 @@ function InventoryContent() {
               lastChecked={lastCheckedLabel(item)}
               highlighted={item.id === highlightId}
               reactivating={reactivatingId === item.id}
+              fixableDefectCount={fixableDefectsByItem.get(item.id)?.length ?? 0}
               onReactivate={() => handleReactivate(item.id)}
               onRetire={() => setRetireTarget(item)}
+              onMarkFixed={() => setFixTarget(item)}
             />
           ))}
         </div>
@@ -834,6 +888,14 @@ function InventoryContent() {
         </Modal>
       )}
 
+      {fixTarget && (
+        <MarkFixedModal
+          item={fixTarget}
+          defects={fixableDefectsByItem.get(fixTarget.id) ?? []}
+          onClose={() => setFixTarget(null)}
+        />
+      )}
+
       {bulkOpen && (
         <BulkImportModal
           onClose={() => setBulkOpen(false)}
@@ -844,6 +906,90 @@ function InventoryContent() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The "not intuitive" fix: a Defective / Under Repair item usually has an
+ * open defect record somewhere on the Defects page, and until now that was
+ * the only place to close it out. This resolves every open/Under-Repair
+ * defect against the item right from the inventory row — same effect
+ * (`resolveDefect` moves the item/unit back to Available), just reachable
+ * from where the status is actually visible.
+ */
+function MarkFixedModal({
+  item,
+  defects,
+  onClose,
+}: {
+  item: ItemListRow;
+  defects: DefectWithItem[];
+  onClose: () => void;
+}) {
+  const resolveDefect = useResolveDefect();
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!notes.trim()) {
+      setError("Resolution notes are required to mark this fixed.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Sequential, not parallel — a unit-scoped resolve recomputes the
+      // item's rolled-up status from every unit, so two in flight at once
+      // could race and leave it on a stale value.
+      for (const defect of defects) {
+        await resolveDefect.mutateAsync({
+          defectId: defect.id,
+          resolution_notes: notes.trim(),
+        });
+      }
+      onClose();
+    } catch {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal title="Mark Fixed" onClose={onClose}>
+      <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+        <p className="text-[0.8125rem] text-muted-foreground">
+          {defects.length > 1
+            ? `This resolves all ${defects.length} open defects against ${item.item_name} and returns it to Available.`
+            : `This resolves the open defect against ${item.item_name} and returns it to Available.`}
+        </p>
+        <div>
+          <Label htmlFor="fixNotes">Resolution Notes *</Label>
+          <Textarea
+            id="fixNotes"
+            aria-invalid={Boolean(error)}
+            value={notes}
+            onChange={(e) => {
+              setNotes(e.target.value);
+              setError("");
+            }}
+            placeholder="What was done to fix it?"
+          />
+          {error && (
+            <span className="field-error">
+              <ExclamationTriangleIcon className="size-[13px]" /> {error}
+            </span>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={submitting}>
+            Mark Fixed
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
